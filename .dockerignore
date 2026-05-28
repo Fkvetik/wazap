@@ -1,0 +1,8 @@
+node_modules/
+data/wazap.db
+data/sessions/
+logs/
+uploads/
+*.log
+.git/
+.env
