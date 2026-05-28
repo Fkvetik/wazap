@@ -1,0 +1,27 @@
+{
+  "name": "wazap",
+  "version": "1.0.0",
+  "description": "Disparador WhatsApp multi-instância com Baileys",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "sql.js": "^1.12.0",
+    "csv-parse": "^5.5.6",
+    "express": "^4.18.3",
+    "express-fileupload": "^1.4.3",
+    "googleapis": "^144.0.0",
+    "pino": "^9.1.0",
+    "pino-pretty": "^11.0.0",
+    "qrcode": "^1.5.3",
+    "socket.io": "^4.7.5",
+    "express-session": "^1.18.0",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

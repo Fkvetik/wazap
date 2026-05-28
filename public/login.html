@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wazap — Login</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #f0f2f5; min-height: 100vh;
+         display: flex; align-items: center; justify-content: center; }
+
+  .card { background: white; border-radius: 16px; padding: 40px 36px;
+          width: 100%; max-width: 380px; box-shadow: 0 4px 24px rgba(0,0,0,.1); }
+
+  .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+  .logo h1 { font-size: 1.5rem; color: #128c7e; font-weight: 700; }
+  .logo small { color: #888; font-size: .82rem; display: block; margin-top: 2px; }
+
+  label { display: block; font-size: .82rem; color: #555; margin-bottom: 5px; margin-top: 16px; }
+  input { width: 100%; padding: 11px 13px; border: 1px solid #dde3ea;
+          border-radius: 8px; font-size: .95rem; outline: none; }
+  input:focus { border-color: #25d366; }
+  .pass-wrap { position: relative; }
+  .pass-wrap input { padding-right: 42px; }
+  .pass-toggle { position: absolute; right: 11px; top: 50%; transform: translateY(-50%);
+                 background: none; border: none; cursor: pointer; font-size: 1.1rem;
+                 color: #888; padding: 2px; line-height: 1; }
+
+  .btn { display: block; width: 100%; padding: 12px; margin-top: 24px;
+         background: #128c7e; color: white; border: none; border-radius: 8px;
+         font-size: 1rem; font-weight: 600; cursor: pointer; transition: background .15s; }
+  .btn:hover { background: #0e7a6e; }
+  .btn:disabled { background: #aaa; cursor: not-allowed; }
+
+  .error { background: #fde8e8; color: #c0392b; padding: 10px 13px;
+           border-radius: 8px; font-size: .85rem; margin-top: 14px;
+           display: none; }
+
+  .footer { text-align: center; margin-top: 20px; font-size: .75rem; color: #aaa; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <svg width="36" height="36" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="16" fill="#25d366"/>
+      <path d="M8 24l2.3-6.3A8 8 0 1 1 13 21.7L8 24z" fill="white"/>
+    </svg>
+    <div>
+      <h1>Wazap</h1>
+      <small>Disparador WhatsApp</small>
+    </div>
+  </div>
+
+  <label for="username">Usuário</label>
+  <input id="username" type="text" placeholder="seu.usuario" autocomplete="username"
+         onkeydown="if(event.key==='Enter') document.getElementById('password').focus()">
+
+  <label for="password">Senha</label>
+  <div class="pass-wrap">
+    <input id="password" type="password" placeholder="••••••••" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter') login()">
+    <button type="button" class="pass-toggle" onclick="togglePass('password',this)" tabindex="-1">👁</button>
+  </div>
+
+  <button class="btn" id="btn-login" onclick="login()">Entrar</button>
+
+  <div class="error" id="error-msg"></div>
+
+  <div class="footer">Wazap © 2026</div>
+</div>
+
+<script>
+async function login() {
+  const btn  = document.getElementById('btn-login')
+  const err  = document.getElementById('error-msg')
+  const user = document.getElementById('username').value.trim()
+  const pass = document.getElementById('password').value
+
+  if (!user || !pass) { showError('Preencha usuário e senha'); return }
+
+  btn.disabled = true
+  btn.textContent = 'Entrando...'
+  err.style.display = 'none'
+
+  try {
+    const res  = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user, password: pass })
+    })
+    const data = await res.json()
+
+    if (data.error) {
+      showError(data.error)
+      btn.disabled = false
+      btn.textContent = 'Entrar'
+      return
+    }
+
+    // Sucesso — redireciona para o painel
+    window.location.href = '/'
+  } catch (e) {
+    showError('Erro de conexão. Tente novamente.')
+    btn.disabled = false
+    btn.textContent = 'Entrar'
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-msg')
+  el.textContent = msg
+  el.style.display = 'block'
+}
+
+function togglePass(id, btn) {
+  const inp = document.getElementById(id)
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈' }
+  else { inp.type = 'password'; btn.textContent = '👁' }
+}
+document.getElementById('username').focus()
+</script>
+</body>
+</html>

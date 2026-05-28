@@ -1,0 +1,2439 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wazap — Disparador WhatsApp</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --green:#25d366; --green-dark:#128c7e; --red:#e74c3c;
+    --yellow:#f39c12; --blue:#3498db; --purple:#8e44ad;
+    --gray:#f0f2f5; --text:#1a1a1a; --border:#dde3ea;
+  }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+         background:var(--gray);color:var(--text);min-height:100vh; }
+
+  header { background:var(--green-dark);color:white;padding:14px 24px;
+           display:flex;align-items:center;gap:12px; }
+  header h1 { font-size:1.2rem;font-weight:600; }
+  header small { opacity:.7;font-size:.8rem; }
+
+  nav { display:flex;background:white;border-bottom:1px solid var(--border); }
+  nav button { padding:12px 20px;border:none;background:none;cursor:pointer;
+               font-size:.9rem;color:#666;border-bottom:3px solid transparent; }
+  nav button.active { color:var(--green-dark);border-color:var(--green-dark);font-weight:600; }
+
+  .page { display:none;padding:24px;max-width:1200px;margin:0 auto; }
+  .page.active { display:block; }
+
+  .card { background:white;border-radius:10px;border:1px solid var(--border);
+          padding:20px;margin-bottom:16px; }
+  .card h2 { font-size:.95rem;margin-bottom:14px;color:var(--green-dark);font-weight:600; }
+
+  .grid-2 { display:grid;grid-template-columns:1fr 1fr;gap:16px; }
+  .grid-3 { display:grid;grid-template-columns:repeat(3,1fr);gap:16px; }
+  @media(max-width:700px){ .grid-2,.grid-3{ grid-template-columns:1fr; } }
+
+  label { display:block;font-size:.82rem;color:#555;margin-bottom:4px;margin-top:10px; }
+  input,select,textarea { width:100%;padding:9px 11px;border:1px solid var(--border);
+    border-radius:7px;font-size:.9rem;outline:none; }
+  input:focus,select:focus,textarea:focus { border-color:var(--green); }
+  textarea { resize:vertical;min-height:80px; }
+
+  .btn { display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border:none;
+         border-radius:7px;cursor:pointer;font-size:.88rem;font-weight:500;transition:filter .15s; }
+  .btn:hover { filter:brightness(.92); }
+  .btn-green  { background:var(--green);color:white; }
+  .btn-dark   { background:var(--green-dark);color:white; }
+  .btn-red    { background:var(--red);color:white; }
+  .btn-yellow { background:var(--yellow);color:white; }
+  .btn-blue   { background:var(--blue);color:white; }
+  .btn-purple { background:var(--purple);color:white; }
+  .btn-gray   { background:#ddd;color:#333; }
+  .btn-modo { padding:7px 16px;border-radius:20px;border:2px solid #ddd;background:#f5f5f5;color:#666;cursor:pointer;font-size:.85rem;font-weight:600;transition:all .15s; }
+  .btn-modo:hover { border-color:#128c7e;color:#128c7e; }
+  .btn-modo.active { border-color:#128c7e;background:#128c7e;color:#fff; }
+  .btn-sm     { padding:5px 12px;font-size:.8rem; }
+
+  .badge { display:inline-block;padding:3px 9px;border-radius:20px;font-size:.75rem;font-weight:600; }
+  .badge-green  { background:#d4edda;color:#155724; }
+  .badge-red    { background:#f8d7da;color:#721c24; }
+  .badge-yellow { background:#fff3cd;color:#856404; }
+  .badge-gray   { background:#e2e3e5;color:#495057; }
+  .badge-blue   { background:#cce5ff;color:#004085; }
+  .badge-purple { background:#e8d5f5;color:#5b2c6f; }
+
+  table { width:100%;border-collapse:collapse;font-size:.87rem; }
+  th { text-align:left;padding:10px 12px;background:#f8f9fa;
+       border-bottom:2px solid var(--border);color:#555;font-weight:600; }
+  td { padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#fafbfc; }
+
+  .instance-card { border:1px solid var(--border);border-radius:10px;padding:16px;background:white; }
+  .qr-img { max-width:200px;border:1px solid var(--border);border-radius:8px;margin-top:10px; }
+
+  .progress-wrap { background:#eee;border-radius:20px;height:10px;overflow:hidden; }
+  .progress-bar  { height:100%;background:var(--green);transition:width .4s;border-radius:20px; }
+
+  #log-list { max-height:420px;overflow-y:auto;font-size:.82rem; }
+  .log-row { display:flex;gap:10px;padding:5px 0;border-bottom:1px solid #f0f0f0; }
+  .log-row .ts { color:#999;white-space:nowrap; }
+  .log-row .ph { color:var(--green-dark);font-weight:500;min-width:130px; }
+
+  .modal-bg { display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+              z-index:100;align-items:center;justify-content:center; }
+  .modal-bg.open { display:flex; }
+  .modal { background:white;border-radius:12px;padding:26px;max-width:560px;
+           width:96%;max-height:90vh;overflow-y:auto; }
+  .modal h3 { margin-bottom:16px;font-size:1.1rem; }
+  .modal-footer { margin-top:18px;display:flex;gap:8px;justify-content:flex-end; }
+
+  .stat-box { text-align:center;padding:14px;border-radius:8px;background:#f8f9fa; }
+  .stat-box .num { font-size:1.8rem;font-weight:700; }
+  .stat-box .lbl { font-size:.78rem;color:#666;margin-top:2px; }
+
+  .actions { display:flex;gap:6px;flex-wrap:wrap; }
+  .hint { font-size:.78rem;color:#888;margin-top:4px; }
+  .sep { border:none;border-top:1px solid var(--border);margin:16px 0; }
+
+  /* Frente de abordagem chip */
+  .frente-btn { padding:14px 20px;border:2px solid var(--border);border-radius:10px;
+                background:white;cursor:pointer;text-align:left;transition:all .15s; }
+  .frente-btn:hover { border-color:var(--green);background:#f0faf5; }
+  .frente-btn.selected { border-color:var(--green-dark);background:#e8f5f0; }
+  .frente-btn .ft { font-weight:700;font-size:.95rem; }
+  .frente-btn .fd { font-size:.78rem;color:#666;margin-top:4px; }
+
+  /* Template card na seleção */
+  .tpl-card { border:1px solid var(--border);border-radius:8px;padding:12px 14px;
+              cursor:pointer;transition:all .15s;margin-bottom:6px; }
+  .tpl-card:hover { border-color:var(--green);background:#f9fffe; }
+  .tpl-card.selected { border-color:var(--green-dark);background:#e8f5f0; }
+  .tpl-card .tc { font-weight:600;font-size:.85rem; }
+  .tpl-card .tm { font-size:.78rem;color:#666;margin-top:4px;line-height:1.4;
+                  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical; }
+  .tpl-card .tn { font-size:.72rem;color:#aaa;margin-top:4px;font-style:italic; }
+  .tpl-list { max-height:320px;overflow-y:auto;padding:2px; }
+
+  code { background:#f0f0f0;padding:2px 5px;border-radius:4px;font-size:.82rem; }
+
+  /* ── Kanban ── */
+  #kanban-board { display:flex;gap:14px;overflow-x:auto;padding-bottom:16px;align-items:flex-start;min-height:60vh; }
+  .kb-col { background:#f4f6f8;border-radius:10px;min-width:240px;width:240px;flex-shrink:0;display:flex;flex-direction:column;max-height:80vh; }
+  .kb-col-header { padding:10px 12px;display:flex;align-items:center;gap:8px;border-radius:10px 10px 0 0;color:white;font-weight:600;font-size:.88rem; }
+  .kb-col-header .kb-count { background:rgba(255,255,255,.3);border-radius:20px;padding:1px 8px;font-size:.75rem; }
+  .kb-col-header .kb-col-actions { margin-left:auto;display:flex;gap:4px;opacity:.8; }
+  .kb-col-header .kb-col-actions button { background:rgba(255,255,255,.2);border:none;color:white;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:.75rem; }
+  .kb-col-header .kb-col-actions button:hover { background:rgba(255,255,255,.4); }
+  .kb-cards { padding:8px;overflow-y:auto;flex:1;min-height:80px; }
+  .kb-card { background:white;border-radius:7px;padding:10px 12px;margin-bottom:8px;cursor:grab;
+             box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #eee;transition:box-shadow .15s; }
+  .kb-card:hover { box-shadow:0 3px 10px rgba(0,0,0,.12); }
+  .kb-card.dragging { opacity:.4;cursor:grabbing; }
+  .kb-card .kc-name { font-weight:600;font-size:.85rem;margin-bottom:3px; }
+  .kb-card .kc-phone { font-size:.77rem;color:#888; }
+  .kb-card .kc-tags { margin-top:5px;display:flex;flex-wrap:wrap;gap:3px; }
+  .kb-card .kc-tag { background:#e8f4fd;color:#2980b9;border-radius:3px;padding:1px 6px;font-size:.7rem; }
+  .kb-card .kc-notes { font-size:.77rem;color:#666;margin-top:4px;line-height:1.3; }
+  .kb-add-col { min-width:200px;flex-shrink:0;border:2px dashed #ccc;border-radius:10px;
+                display:flex;align-items:center;justify-content:center;cursor:pointer;
+                color:#aaa;font-size:.88rem;padding:20px;transition:all .15s; }
+  .kb-add-col:hover { border-color:var(--green);color:var(--green-dark); }
+  .kb-drop-zone { border:2px dashed var(--green)!important;background:#f0faf5!important; }
+  .kb-add-card { width:100%;padding:6px;background:none;border:none;color:#aaa;cursor:pointer;
+                 font-size:.82rem;text-align:left;border-radius:0 0 8px 8px;transition:color .15s; }
+  .kb-add-card:hover { color:var(--green-dark); }
+  .vars-preview { background:#f8f9fa;border-radius:8px;padding:12px;font-size:.82rem;
+                  color:#444;line-height:1.6;border:1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+    <circle cx="16" cy="16" r="16" fill="#25d366"/>
+    <path d="M8 24l2.3-6.3A8 8 0 1 1 13 21.7L8 24z" fill="white"/>
+  </svg>
+  <div style="flex:1">
+    <h1>Wazap</h1>
+    <small>Disparador WhatsApp multi-instância</small>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;font-size:.82rem">
+    <span style="opacity:.7">Operador:</span>
+    <span id="header-operador" style="font-weight:600">—</span>
+    <span id="header-user" style="opacity:.7;font-size:.75rem"></span>
+    <button class="btn btn-gray btn-sm" onclick="openSettings()">⚙ Config</button>
+    <button class="btn btn-red btn-sm" onclick="logout()">Sair</button>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="showPage('instances')">📱 Instâncias</button>
+  <button onclick="showPage('campaigns')">📣 Campanhas</button>
+  <button onclick="showPage('templates')">💬 Templates</button>
+  <button onclick="showPage('logs')">📋 Logs</button>
+  <button onclick="showPage('kanban')">🗂 CRM</button>
+  <button onclick="showPage('chatbot')">🤖 Chatbot</button>
+  <button id="nav-users" onclick="showPage('users')" style="display:none">👥 Usuários</button>
+  <button id="nav-admin" onclick="showPage('admin')" style="display:none">🛠 Admin</button>
+</nav>
+
+<!-- Banner URL do Túnel -->
+<div id="tunnel-banner" style="display:none;background:#1a472a;color:#fff;padding:8px 20px;font-size:13px;align-items:center;gap:12px;flex-wrap:wrap">
+  <span>🌐 <strong>URL pública:</strong></span>
+  <a id="tunnel-url-link" href="#" target="_blank" style="color:#7dffaa;font-weight:bold;text-decoration:none;word-break:break-all"></a>
+  <button onclick="copyTunnelUrl()" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:12px">📋 Copiar</button>
+  <span style="opacity:.6;font-size:11px">🔒 URL permanente</span>
+</div>
+
+<!-- ═══ INSTÂNCIAS ═══ -->
+<div class="page active" id="page-instances">
+  <div class="card">
+    <h2>Adicionar número</h2>
+    <div style="display:flex;gap:10px;align-items:flex-end">
+      <div style="flex:1">
+        <label>ID da instância (ex: chip1, chip_vendas)</label>
+        <input id="new-instance-id" placeholder="Identificador único" maxlength="30">
+      </div>
+      <button class="btn btn-green" onclick="addInstance()">+ Adicionar</button>
+    </div>
+  </div>
+  <div id="instances-grid" class="grid-3"></div>
+</div>
+
+<!-- ═══ CAMPANHAS ═══ -->
+<div class="page" id="page-campaigns">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <strong>Campanhas</strong>
+    <button class="btn btn-green" onclick="openCampaignModal()">+ Nova campanha</button>
+  </div>
+  <div id="campaigns-list"></div>
+</div>
+
+<!-- ═══ TEMPLATES ═══ -->
+<div class="page" id="page-templates">
+  <div class="grid-2" style="margin-bottom:16px">
+
+    <div class="card" style="border-left:4px solid var(--blue)">
+      <h2 style="color:var(--blue)">📋 Novos Talentos — Catho</h2>
+      <p style="font-size:.83rem;color:#555;margin-bottom:12px">
+        Base exportada da Catho. Colunas mapeadas automaticamente:<br>
+        <code>Whatsapp</code>/<code>Telefone1</code> → telefone &nbsp;|&nbsp;
+        <code>PrimeiroNome</code> → <code>{primeiro_nome}</code> &nbsp;|&nbsp;
+        <code>Cidade</code> → <code>{cidade_fallback}</code> &nbsp;|&nbsp;
+        <code>Bairro</code> → <code>{bairro_frase}</code>
+      </p>
+      <div class="vars-preview">
+        <strong>Variáveis disponíveis:</strong><br>
+        <code>{saudacao}</code> <code>{primeiro_nome}</code> <code>{nome}</code>
+        <code>{cidade_fallback}</code> <code>{bairro_frase}</code>
+        <code>{cargo}</code> <code>{operador}</code> <code>{email}</code>
+      </div>
+    </div>
+
+    <div class="card" style="border-left:4px solid var(--purple)">
+      <h2 style="color:var(--purple)">🏠 Corretores CRECI</h2>
+      <p style="font-size:.83rem;color:#555;margin-bottom:12px">
+        Base do CRECI com dados do Instagram. Colunas mapeadas automaticamente:<br>
+        <code>RHI_IG_TELEFONE_WA</code> → telefone &nbsp;|&nbsp;
+        <code>Nome</code> → <code>{primeiro_nome}</code> &nbsp;|&nbsp;
+        <code>CIDADE</code> → <code>{cidade_fallback}</code> &nbsp;|&nbsp;
+        <code>CRECI</code> → <code>{creci_frase}</code>
+      </p>
+      <div class="vars-preview">
+        <strong>Variáveis disponíveis:</strong><br>
+        <code>{saudacao}</code> <code>{primeiro_nome}</code> <code>{nome}</code>
+        <code>{cidade_fallback}</code> <code>{creci_frase}</code>
+        <code>{cargo}</code> <code>{operador}</code> <code>{instagram}</code>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Templates de abordagem</h2>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <select id="tpl-filter-group" onchange="filterTemplates()" style="width:auto;padding:7px 10px">
+        <option value="">Todos os grupos</option>
+        <option value="CATHO_NOVOS_TALENTOS">Novos Talentos (Catho)</option>
+        <option value="CORRETORES_CRECI">Corretores CRECI</option>
+      </select>
+      <select id="tpl-filter-active" onchange="filterTemplates()" style="width:auto;padding:7px 10px">
+        <option value="">Todos</option>
+        <option value="1">Ativos</option>
+        <option value="0">Inativos</option>
+      </select>
+      <button class="btn btn-green btn-sm" onclick="openTemplateModal()">+ Novo</button>
+    </div>
+    <div id="templates-list"></div>
+  </div>
+</div>
+
+<!-- ═══ USUÁRIOS (admin only) ═══ -->
+<div class="page" id="page-users">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <strong>Usuários do sistema</strong>
+    <button class="btn btn-green" onclick="openUserModal()">+ Novo usuário</button>
+  </div>
+  <div class="card">
+    <table>
+      <thead><tr>
+        <th>Nome</th><th>Usuário</th><th>Perfil</th>
+        <th>Último acesso</th><th style="width:70px;text-align:center">Status</th>
+        <th style="width:160px">Ações</th>
+      </tr></thead>
+      <tbody id="users-tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:8px">
+    <h2>Trocar minha senha</h2>
+    <div class="grid-2">
+      <div>
+        <label>Senha atual</label>
+        <div style="position:relative">
+          <input type="password" id="cp-current" placeholder="••••••••" style="padding-right:38px;width:100%">
+          <button type="button" onclick="togglePassField('cp-current',this)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;color:#888" tabindex="-1">👁</button>
+        </div>
+      </div>
+      <div>
+        <label>Nova senha</label>
+        <div style="position:relative">
+          <input type="password" id="cp-new" placeholder="••••••••" style="padding-right:38px;width:100%">
+          <button type="button" onclick="togglePassField('cp-new',this)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;color:#888" tabindex="-1">👁</button>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-dark btn-sm" style="margin-top:10px" onclick="changePassword()">Salvar nova senha</button>
+    <p id="cp-result" class="hint" style="margin-top:6px"></p>
+  </div>
+</div>
+
+<!-- ═══ LOGS ═══ -->
+<div class="page" id="page-logs">
+  <div class="card">
+    <h2>Últimos 200 envios</h2>
+    <div id="log-list"></div>
+  </div>
+</div>
+
+<!-- ═══ ADMIN ═══ -->
+<div class="page" id="page-admin">
+  <div class="card">
+    <h2>📤 Pré-carregar Contatos por Usuário</h2>
+    <p style="color:#888;margin-bottom:16px">Faça upload de um CSV e ele será criado como campanha pronta na conta do usuário. Quando o usuário logar, a campanha já estará disponível para disparar.</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div>
+        <label style="font-size:.85rem;color:#888;display:block;margin-bottom:4px">Usuário destino *</label>
+        <select id="preload-user" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">
+          <option value="">Carregando...</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:.85rem;color:#888;display:block;margin-bottom:4px">Nome da campanha *</label>
+        <input id="preload-name" type="text" placeholder="Ex: Corretores SP - Maio 2026" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:.85rem;color:#888;display:block;margin-bottom:4px">Arquivo CSV *</label>
+        <input id="preload-file" type="file" accept=".csv,.txt,.tsv" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:.85rem;color:#888;display:block;margin-bottom:4px">Formato (deixe Auto para detectar)</label>
+        <select id="preload-format" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px">
+          <option value="">Auto-detectar</option>
+          <option value="creci">CRECI (corretores SP)</option>
+          <option value="talentos">Novos Talentos</option>
+          <option value="corretor_meta">Corretor Meta</option>
+          <option value="generic">Genérico (phone/name)</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <label style="font-size:.85rem;color:#888;display:block;margin-bottom:4px">Mensagem inicial da campanha</label>
+      <textarea id="preload-message" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;resize:vertical">Olá {primeiro_nome}! Tudo bem?</textarea>
+      <span style="font-size:.75rem;color:#aaa">Variáveis: {primeiro_nome} {nome} {telefone}</span>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-green" onclick="preloadCSV()">📤 Fazer Upload e Criar Campanha</button>
+    </div>
+    <div id="preload-result" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">📋 Campanhas de Todos os Usuários</h2>
+      <button class="btn btn-gray btn-sm" onclick="loadAdminCampaigns()">🔄 Atualizar</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>Usuário</th><th>Campanha</th><th>Contatos</th><th>Enviados</th><th>Criada em</th>
+        </tr></thead>
+        <tbody id="admin-campaigns-tbody">
+          <tr><td colspan="5" style="color:#888;text-align:center;padding:16px">Clique em Atualizar</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CRM KANBAN ═══ -->
+<div class="page" id="page-kanban">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div>
+      <strong style="font-size:1.05rem">🗂 CRM — Pipeline de Leads</strong>
+      <p style="font-size:.8rem;color:#888;margin-top:3px">Arraste os cards entre colunas para acompanhar a evolução de cada lead.</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-blue btn-sm" onclick="loadKanban()">↻ Atualizar</button>
+      <button class="btn btn-green btn-sm" onclick="addKanbanColumn()">+ Nova coluna</button>
+    </div>
+  </div>
+  <div id="kanban-board"></div>
+</div>
+
+<!-- Modal card -->
+<div class="modal-bg" id="card-modal">
+  <div class="modal" style="max-width:480px">
+    <h3 id="card-modal-title">Lead</h3>
+    <input type="hidden" id="card-id">
+    <input type="hidden" id="card-col-id">
+    <div class="grid-2">
+      <div>
+        <label>Nome</label>
+        <input id="card-name" placeholder="Nome do lead">
+      </div>
+      <div>
+        <label>Telefone</label>
+        <input id="card-phone" placeholder="5511999999999">
+      </div>
+    </div>
+    <div>
+      <label>Tags <span class="hint">(separadas por vírgula)</span></label>
+      <input id="card-tags" placeholder="interessado, jardins, alto padrão">
+    </div>
+    <div>
+      <label>Anotações</label>
+      <textarea id="card-notes" rows="4" placeholder="Observações sobre o lead..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-red btn-sm" onclick="deleteCard()" id="btn-delete-card" style="margin-right:auto;display:none">🗑 Excluir</button>
+      <button class="btn btn-gray" onclick="closeModal('card-modal')">Cancelar</button>
+      <button class="btn btn-green" onclick="saveCard()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CHATBOT ═══ -->
+<div class="page" id="page-chatbot">
+
+  <!-- Status + toggle -->
+  <div class="card" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <strong style="font-size:1.05rem">🤖 Chatbot Corretor</strong>
+      <p style="font-size:.82rem;color:#888;margin-top:4px">Responde automaticamente aos leads que retornam pelas campanhas.</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button id="modo-off"      class="btn-modo" onclick="setBotModo('OFF')"      title="Bot desligado — não responde nada">🔴 Desligado</button>
+      <button id="modo-entrada"  class="btn-modo" onclick="setBotModo('ENTRADA')"  title="Responde só a primeira mensagem e encerra">⚡ Só entrada</button>
+      <button id="modo-completo" class="btn-modo active" onclick="setBotModo('COMPLETO')" title="Funil completo — segue todas as etapas configuradas">🟢 Fluxo completo</button>
+    </div>
+  </div>
+
+  <!-- Configurações -->
+  <div class="card" style="margin-top:16px">
+    <h3 style="margin-bottom:16px">Configurações</h3>
+    <div class="grid-2">
+      <div>
+        <label>Telefone do atendente humano (com DDI+DDD) <span class="hint">ex: 5511948740857</span></label>
+        <input id="bot-humano-phone" placeholder="5511948740857" oninput="botConfigChanged()">
+      </div>
+      <div>
+        <label>Nome do atendente</label>
+        <input id="bot-humano-nome" placeholder="Marcela" oninput="botConfigChanged()">
+      </div>
+    </div>
+    <div class="grid-2" style="margin-top:12px">
+      <div>
+        <label>Nome da operação</label>
+        <input id="bot-operation-name" placeholder="RHIMOB | Corretor CRECI | Grupo Kaza" oninput="botConfigChanged()">
+      </div>
+      <div>
+        <label>Site de vagas</label>
+        <input id="bot-site-vagas" placeholder="https://www.rhimob.com.br/vagas" oninput="botConfigChanged()">
+      </div>
+    </div>
+
+    <h4 style="margin:18px 0 10px">Slots de agendamento</h4>
+    <div class="grid-2">
+      <div>
+        <label>1ª opção — dia</label>
+        <select id="bot-slot1-dia" onchange="botConfigChanged()">
+          <option value="SEGUNDA">Segunda-feira</option>
+          <option value="TERCA" selected>Terça-feira</option>
+          <option value="QUARTA">Quarta-feira</option>
+          <option value="QUINTA">Quinta-feira</option>
+          <option value="SEXTA">Sexta-feira</option>
+        </select>
+      </div>
+      <div>
+        <label>1ª opção — hora</label>
+        <input id="bot-slot1-hora" placeholder="10:00" oninput="botConfigChanged()">
+      </div>
+    </div>
+    <div class="grid-2" style="margin-top:8px">
+      <div>
+        <label>2ª opção — dia</label>
+        <select id="bot-slot2-dia" onchange="botConfigChanged()">
+          <option value="SEGUNDA">Segunda-feira</option>
+          <option value="TERCA">Terça-feira</option>
+          <option value="QUARTA">Quarta-feira</option>
+          <option value="QUINTA" selected>Quinta-feira</option>
+          <option value="SEXTA">Sexta-feira</option>
+        </select>
+      </div>
+      <div>
+        <label>2ª opção — hora</label>
+        <input id="bot-slot2-hora" placeholder="14:00" oninput="botConfigChanged()">
+      </div>
+    </div>
+
+    <div style="margin-top:16px;display:flex;gap:10px">
+      <button class="btn btn-dark" onclick="saveBotConfig()" id="btn-save-bot-cfg" disabled>Salvar configurações</button>
+    </div>
+  </div>
+
+  <!-- ──── Análise de Funil ──── -->
+  <div class="card" style="margin-top:16px;border-left:4px solid var(--purple)">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+      <div>
+        <strong style="font-size:1rem">🔍 Análise de Funil</strong>
+        <p style="font-size:.8rem;color:#888;margin-top:3px">Avalia conversas reais e sugere melhorias nas regras e mensagens do bot.</p>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="analysis-phone" placeholder="Telefone (opcional)" style="width:180px;padding:7px 10px;font-size:.85rem">
+        <button class="btn btn-purple btn-sm" onclick="runAnalysis()" style="white-space:nowrap">▶ Analisar funil</button>
+        <button class="btn btn-blue btn-sm" onclick="runCTACheck()" style="white-space:nowrap" title="Verifica se as instruções das mensagens estão cobertas pelas keywords das decisões">🔗 Verificar CTAs</button>
+      </div>
+    </div>
+
+    <!-- Stats resumo -->
+    <div id="analysis-stats" style="display:none;margin-bottom:16px">
+      <div class="grid-3" id="analysis-stat-boxes" style="gap:10px"></div>
+    </div>
+
+    <!-- Sugestões -->
+    <div id="analysis-result" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <strong style="font-size:.9rem">💡 Sugestões encontradas</strong>
+        <span id="analysis-count" class="badge badge-purple"></span>
+      </div>
+      <div id="analysis-suggestions"></div>
+    </div>
+
+    <div id="analysis-empty" style="display:none;color:#888;font-size:.85rem;padding:8px 0">
+      Nenhuma sugestão — o funil está bem configurado para os dados disponíveis.
+    </div>
+    <div id="analysis-loading" style="display:none;color:#888;font-size:.85rem;padding:8px 0">
+      ⏳ Analisando...
+    </div>
+    <div id="analysis-no-data" style="display:none;color:#aaa;font-size:.85rem;padding:8px 0">
+      Ainda não há conversas registradas. Os dados começam a ser coletados a partir de agora.
+    </div>
+  </div>
+
+  <!-- Conversas ativas -->
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <strong>Conversas em andamento</strong>
+      <button class="btn btn-blue btn-sm" onclick="loadBotStates()">↻ Atualizar</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+      <thead>
+        <tr style="border-bottom:2px solid #eee">
+          <th style="text-align:left;padding:6px 8px">Telefone</th>
+          <th style="text-align:left;padding:6px 8px">Estágio</th>
+          <th style="text-align:left;padding:6px 8px">Última intenção</th>
+          <th style="text-align:left;padding:6px 8px">Situação</th>
+          <th style="text-align:left;padding:6px 8px">Atualizado</th>
+          <th style="width:60px"></th>
+        </tr>
+      </thead>
+      <tbody id="bot-states-tbody">
+        <tr><td colspan="6" style="color:#888;padding:12px 8px">Carregando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ──── Intenções (Decisões) ──── -->
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <strong>🧠 Intenções &amp; Regras</strong>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-blue btn-sm" onclick="loadBotDecisions()">↻ Atualizar</button>
+        <button class="btn btn-green btn-sm" onclick="openDecisionModal()">+ Nova regra</button>
+      </div>
+    </div>
+    <p style="font-size:.8rem;color:#888;margin-bottom:10px">
+      Cada regra define: em qual estágio, quais palavras-chave disparam qual conjunto de mensagens e para qual próximo estágio avançar.
+    </p>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <colgroup>
+          <col style="width:52px">
+          <col style="width:100px">
+          <col style="width:180px">
+          <col>
+          <col style="width:160px">
+          <col style="width:96px">
+        </colgroup>
+        <thead>
+          <tr style="border-bottom:2px solid #eee">
+            <th style="padding:6px 8px">Prior.</th>
+            <th style="padding:6px 8px">Estágio</th>
+            <th style="padding:6px 8px">Intenção</th>
+            <th style="padding:6px 8px">Palavras-chave</th>
+            <th style="padding:6px 8px">Mensagens (IDs)</th>
+            <th style="padding:6px 8px;text-align:center">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="bot-decisions-tbody">
+          <tr><td colspan="6" style="color:#888;padding:12px 8px">Carregando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ──── Frases (Mensagens) ──── -->
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <strong>💬 Frases das Mensagens</strong>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-blue btn-sm" onclick="loadBotMessages()">↻ Atualizar</button>
+        <button class="btn btn-green btn-sm" onclick="openMessageModal()">+ Nova frase</button>
+      </div>
+    </div>
+    <p style="font-size:.8rem;color:#888;margin-bottom:10px">
+      Textos enviados pelo bot. Use <code>{primeiro_nome}</code>, <code>{slot_1_texto}</code>, <code>{slot_2_texto}</code>, <code>{humano_nome}</code>, <code>{site_vagas_url}</code> como variáveis.
+    </p>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead>
+          <tr style="border-bottom:2px solid #eee">
+            <th style="padding:6px 8px;width:200px">ID da mensagem</th>
+            <th style="padding:6px 8px;width:70px">Tipo</th>
+            <th style="padding:6px 8px">Texto</th>
+            <th style="padding:6px 8px;width:80px">Destino</th>
+            <th style="padding:6px 8px;width:80px">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="bot-messages-tbody">
+          <tr><td colspan="5" style="color:#888;padding:12px 8px">Carregando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: DECISÃO DO BOT ═══ -->
+<div class="modal-bg" id="decision-modal">
+  <div class="modal" style="max-width:640px">
+    <h3 id="decision-modal-title">Nova Regra</h3>
+    <input type="hidden" id="dec-id">
+    <div class="grid-2">
+      <div>
+        <label>Prioridade <span class="hint">(maior = verificada primeiro)</span></label>
+        <input id="dec-priority" type="number" value="10" min="1" max="999">
+      </div>
+      <div>
+        <label>Estágio <span class="hint">(QUALQUER = vale em todos)</span></label>
+        <input id="dec-stage" placeholder="Ex: WEBHOOK, INFO2, QUALQUER" style="text-transform:uppercase">
+      </div>
+    </div>
+    <div>
+      <label>Intenção <span class="hint">(identificador interno, ex: INTERESSE_POSITIVO)</span></label>
+      <input id="dec-intent" placeholder="INTERESSE_POSITIVO" style="text-transform:uppercase">
+    </div>
+    <div>
+      <label>Palavras-chave <span class="hint">separadas por vírgula; use * para capturar tudo; EXATO:frase para match exato</span></label>
+      <textarea id="dec-keywords" rows="2" placeholder="tenho interesse, quero saber, interessado, curiosidade"></textarea>
+    </div>
+    <div>
+      <label>IDs das mensagens a enviar <span class="hint">(separados por vírgula, na ordem)</span></label>
+      <input id="dec-msg-ids" placeholder="MSG_ABORDAGEM_1,MSG_ABORDAGEM_2">
+    </div>
+    <div class="grid-2">
+      <div>
+        <label>Próximo estágio</label>
+        <input id="dec-next-stage" placeholder="MESMO ou INFO2, COMPLEMENTO..." style="text-transform:uppercase">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:22px">
+        <label style="display:flex;gap:8px;cursor:pointer">
+          <input type="checkbox" id="dec-advances" style="width:auto"> Avança estágio
+        </label>
+        <label style="display:flex;gap:8px;cursor:pointer">
+          <input type="checkbox" id="dec-finalizes" style="width:auto"> Finaliza conversa
+        </label>
+        <label style="display:flex;gap:8px;cursor:pointer">
+          <input type="checkbox" id="dec-human" style="width:auto"> Passa para humano
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('decision-modal')">Cancelar</button>
+      <button class="btn btn-green" onclick="saveDecision()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: FRASE DO BOT ═══ -->
+<div class="modal-bg" id="message-modal">
+  <div class="modal" style="max-width:600px">
+    <h3 id="message-modal-title">Nova Frase</h3>
+    <input type="hidden" id="msg-original-id">
+    <div class="grid-2">
+      <div>
+        <label>ID da mensagem <span class="hint">(único, letras maiúsculas e _)</span></label>
+        <input id="msg-id" placeholder="MSG_ABORDAGEM_1" style="text-transform:uppercase" id="msg-id">
+      </div>
+      <div>
+        <label>Tipo</label>
+        <select id="msg-type">
+          <option value="text">text — texto simples</option>
+          <option value="video">video — vídeo com legenda</option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label>Texto / Legenda</label>
+      <textarea id="msg-text" rows="5" placeholder="Olá {primeiro_nome}! Tudo bem?&#10;&#10;Aqui é a {humano_nome}..."></textarea>
+    </div>
+    <div>
+      <label>URL do vídeo <span class="hint">(apenas para tipo video)</span></label>
+      <input id="msg-url" placeholder="https://res.cloudinary.com/...">
+    </div>
+    <div style="margin-top:10px">
+      <label style="display:flex;gap:8px;cursor:pointer">
+        <input type="checkbox" id="msg-internal" style="width:auto">
+        Mensagem interna (enviada ao atendente, não ao lead)
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('message-modal')">Cancelar</button>
+      <button class="btn btn-green" onclick="saveMessage()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: NOVA CAMPANHA ═══ -->
+<div class="modal-bg" id="campaign-modal">
+  <div class="modal">
+    <h3 id="modal-title">Nova Campanha</h3>
+    <input type="hidden" id="camp-id">
+
+    <!-- Passo 1: escolha a frente -->
+    <div id="step-frente">
+      <p style="font-size:.85rem;color:#555;margin-bottom:12px">Qual frente de abordagem?</p>
+      <div class="grid-2">
+        <button class="frente-btn" id="btn-frente-talentos" onclick="selectFrente('talentos')">
+          <div class="ft">📋 Novos Talentos</div>
+          <div class="fd">Base Catho — candidatos em busca de oportunidade</div>
+        </button>
+        <button class="frente-btn" id="btn-frente-creci" onclick="selectFrente('creci')">
+          <div class="ft">🏠 Corretores CRECI</div>
+          <div class="fd">Base CRECI — corretores ativos na região</div>
+        </button>
+      </div>
+    </div>
+
+    <hr class="sep">
+
+    <label>Nome da campanha</label>
+    <input id="camp-name" placeholder="Ex: Captação SP Zona Sul — Mai/26">
+
+    <!-- Seletor de template -->
+    <label>Template de mensagem</label>
+    <select id="camp-tpl-select" onchange="onSelectTemplate()">
+      <option value="">— Selecione um template —</option>
+    </select>
+    <div id="camp-tpl-preview" style="display:none;margin-top:8px">
+      <div class="vars-preview" id="camp-tpl-text" style="font-size:.82rem"></div>
+      <p class="hint" id="camp-tpl-notes"></p>
+    </div>
+
+    <label>Mensagem (editável após selecionar template)</label>
+    <textarea id="camp-message" rows="4" placeholder="Selecione um template acima ou escreva diretamente"></textarea>
+
+    <div class="grid-2">
+      <div>
+        <label>Delay mínimo (seg)</label>
+        <input type="number" id="camp-delay-min" value="8" min="3">
+      </div>
+      <div>
+        <label>Delay máximo (seg)</label>
+        <input type="number" id="camp-delay-max" value="25" min="5">
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <label>Horário início (hora)</label>
+        <input type="number" id="camp-hour-start" value="8" min="0" max="23">
+      </div>
+      <div>
+        <label>Horário fim (hora)</label>
+        <input type="number" id="camp-hour-end" value="20" min="1" max="24">
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <label>Limite diário por número</label>
+        <input type="number" id="camp-daily" value="200" min="1">
+      </div>
+      <div>
+        <label>Rotação de instâncias</label>
+        <select id="camp-rotation">
+          <option value="round-robin">Round-robin</option>
+          <option value="random">Aleatório</option>
+        </select>
+      </div>
+    </div>
+
+    <hr class="sep">
+    <h2 style="font-size:.9rem;color:#333;margin-bottom:10px">Importar base de contatos</h2>
+
+    <div id="import-format-info" class="hint" style="margin-bottom:10px;padding:8px;background:#f0faf5;border-radius:6px;display:none"></div>
+
+    <div class="grid-2">
+      <div>
+        <label>CSV / TSV da base</label>
+        <input type="file" id="import-csv" accept=".csv,.tsv,.txt">
+        <button class="btn btn-blue btn-sm" style="margin-top:6px" onclick="importCSV()">⬆ Importar CSV</button>
+      </div>
+      <div>
+        <label>Google Sheets ID</label>
+        <input id="import-sheet-id" placeholder="1BxiMV...ABC">
+        <input id="import-sheet-range" placeholder="A1:Z2000 (opcional)" style="margin-top:6px">
+        <button class="btn btn-blue btn-sm" style="margin-top:6px" onclick="importSheets()">⬆ Importar Sheets</button>
+      </div>
+    </div>
+    <p id="import-result" class="hint" style="margin-top:6px"></p>
+
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeCampaignModal()">Cancelar</button>
+      <button class="btn btn-dark" onclick="saveCampaign()">Salvar campanha</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: TEMPLATE ═══ -->
+<div class="modal-bg" id="template-modal">
+  <div class="modal">
+    <h3 id="tpl-modal-title">Novo Template</h3>
+    <input type="hidden" id="tpl-id">
+
+    <div class="grid-2">
+      <div>
+        <label>ID do template</label>
+        <input id="tpl-template-id" placeholder="Ex: CATHO_NT_09">
+      </div>
+      <div>
+        <label>Grupo</label>
+        <select id="tpl-group">
+          <option value="CATHO_NOVOS_TALENTOS">Novos Talentos (Catho)</option>
+          <option value="CORRETORES_CRECI">Corretores CRECI</option>
+          <option value="">Outro</option>
+        </select>
+      </div>
+    </div>
+
+    <label>Título</label>
+    <input id="tpl-title" placeholder="Ex: CRECI — abordagem direta">
+
+    <label>Mensagem</label>
+    <textarea id="tpl-message" rows="6"></textarea>
+    <p class="hint">Variáveis: <code>{saudacao}</code> <code>{primeiro_nome}</code> <code>{cidade_fallback}</code> <code>{bairro_frase}</code> <code>{creci_frase}</code> <code>{cargo}</code> <code>{operador}</code></p>
+
+    <label>Notas internas</label>
+    <input id="tpl-notes" placeholder="Ex: Alta naturalidade, sem pressão">
+
+    <div class="grid-2">
+      <div>
+        <label>Ordem</label>
+        <input type="number" id="tpl-order" value="0">
+      </div>
+      <div style="display:flex;align-items:flex-end;padding-bottom:2px">
+        <label style="display:flex;align-items:center;gap:8px;margin-top:0">
+          <input type="checkbox" id="tpl-active" checked style="width:auto">
+          Ativo
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeTemplateModal()">Cancelar</button>
+      <button class="btn btn-dark" onclick="saveTemplate()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: USUÁRIO ═══ -->
+<div class="modal-bg" id="user-modal">
+  <div class="modal">
+    <h3 id="user-modal-title">Novo Usuário</h3>
+    <input type="hidden" id="user-id">
+
+    <div class="grid-2">
+      <div>
+        <label>Nome completo</label>
+        <input id="user-name" placeholder="Ex: Ana Silva">
+      </div>
+      <div>
+        <label>Usuário (login)</label>
+        <input id="user-username" placeholder="Ex: ana.silva">
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div>
+        <label>Senha <span id="user-pass-hint" class="hint">(deixe em branco para não alterar)</span></label>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="user-password" placeholder="••••••••" style="padding-right:38px;width:100%">
+          <button type="button" onclick="togglePassVis('user-password','eye-user')"
+            style="position:absolute;right:8px;background:none;border:none;cursor:pointer;font-size:1.1rem;line-height:1;padding:0" title="Mostrar/ocultar senha">
+            <span id="eye-user">👁</span>
+          </button>
+        </div>
+      </div>
+      <div>
+        <label>Perfil</label>
+        <select id="user-role">
+          <option value="operator">Operador — acessa campanhas e instâncias</option>
+          <option value="admin">Administrador — acesso total</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="user-active" checked style="width:auto">
+      <label for="user-active" style="margin:0">Usuário ativo</label>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeUserModal()">Cancelar</button>
+      <button class="btn btn-dark" onclick="saveUser()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: CONFIGURAÇÕES ═══ -->
+<div class="modal-bg" id="settings-modal">
+  <div class="modal">
+    <h3>⚙ Configurações</h3>
+    <label>Nome do operador <span class="hint">(substitui <code>{operador}</code> nas mensagens)</span></label>
+    <input id="set-operador" placeholder="Ex: Ana, Carlos, Equipe RH Imob">
+    <label>Conta</label>
+    <input id="set-conta" placeholder="Ex: CONTA_RHIMOB">
+    <label>Projeto</label>
+    <input id="set-projeto" placeholder="Ex: KAZA_A">
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeSettings()">Cancelar</button>
+      <button class="btn btn-dark" onclick="saveSettings()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const socket = io()
+let campaigns = []
+let allTemplates = []
+let currentFrente = null
+
+// ─── Navegação ────────────────────────────────
+function showPage(name, noEvent) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'))
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'))
+  document.getElementById('page-' + name).classList.add('active')
+  const btn = [...document.querySelectorAll('nav button')].find(b => b.getAttribute('onclick')?.includes(`'${name}'`))
+  if (btn) btn.classList.add('active')
+  if (name === 'instances')  loadInstances()
+  if (name === 'campaigns')  loadCampaigns()
+  if (name === 'templates')  loadTemplates()
+  if (name === 'logs')       loadLogs()
+}
+
+// ─── Settings ────────────────────────────────
+async function loadSettings() {
+  const res = await fetch('/api/settings')
+  const s = await res.json()
+  document.getElementById('header-operador').textContent = s.operador || '—'
+  return s
+}
+
+function openSettings() {
+  loadSettings().then(s => {
+    document.getElementById('set-operador').value = s.operador || ''
+    document.getElementById('set-conta').value    = s.conta    || ''
+    document.getElementById('set-projeto').value  = s.projeto  || ''
+    document.getElementById('settings-modal').classList.add('open')
+  })
+}
+function closeSettings() { document.getElementById('settings-modal').classList.remove('open') }
+async function saveSettings() {
+  const body = {
+    operador: document.getElementById('set-operador').value.trim(),
+    conta:    document.getElementById('set-conta').value.trim(),
+    projeto:  document.getElementById('set-projeto').value.trim()
+  }
+  await fetch('/api/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+  closeSettings()
+  loadSettings()
+}
+
+// ─── Instâncias ───────────────────────────────
+async function loadInstances() {
+  const res = await fetch('/api/instances')
+  renderInstances(await res.json())
+}
+
+function renderInstances(data) {
+  const grid = document.getElementById('instances-grid')
+  if (!data.length) { grid.innerHTML = '<p style="color:#888">Nenhuma instância ainda.</p>'; return }
+  grid.innerHTML = data.map(inst => `
+    <div class="instance-card" id="inst-${inst.id}">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div>
+          <div style="color:#888;font-size:.78rem">${inst.id}</div>
+          <div style="font-weight:600;font-size:1rem">${inst.phone || '—'}</div>
+        </div>
+        <span class="badge ${statusBadge(inst.status,inst.banned)}">${statusLabel(inst.status,inst.banned)}</span>
+      </div>
+      ${inst.qr ? `<img class="qr-img" src="${inst.qr}">
+        <p class="hint">WhatsApp → Dispositivos conectados → Conectar dispositivo</p>` : ''}
+      <div style="margin-top:10px;font-size:.82rem;color:#666">Enviados hoje: <strong>${inst.sent_today}</strong></div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn btn-red btn-sm" onclick="removeInstance('${inst.id}')">Remover</button>
+      </div>
+    </div>
+  `).join('')
+}
+
+async function addInstance() {
+  const id = document.getElementById('new-instance-id').value.trim()
+  if (!id) return alert('Informe um ID')
+  const res = await fetch('/api/instances', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id}) })
+  const data = await res.json()
+  if (data.error) return alert(data.error)
+  document.getElementById('new-instance-id').value = ''
+  loadInstances()
+}
+
+async function removeInstance(id) {
+  if (!confirm(`Remover instância "${id}"?`)) return
+  await fetch('/api/instances/' + id, { method:'DELETE' })
+  loadInstances()
+}
+
+// ─── Campanhas ────────────────────────────────
+async function loadCampaigns() {
+  const res = await fetch('/api/campaigns')
+  campaigns = await res.json()
+  renderCampaigns()
+}
+
+function renderCampaigns() {
+  const el = document.getElementById('campaigns-list')
+  if (!campaigns.length) { el.innerHTML = '<p style="color:#888">Nenhuma campanha ainda.</p>'; return }
+  el.innerHTML = campaigns.map(c => {
+    const pct = c.total > 0 ? Math.round((c.sent/c.total)*100) : 0
+    const frenteBadge = c.name.toLowerCase().includes('creci') || c.name.toLowerCase().includes('corretor')
+      ? '<span class="badge badge-purple" style="margin-left:6px">CRECI</span>'
+      : c.name.toLowerCase().includes('catho') || c.name.toLowerCase().includes('talento')
+      ? '<span class="badge badge-blue" style="margin-left:6px">Catho</span>' : ''
+    return `
+    <div class="card" id="camp-card-${c.id}">
+      <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px">
+        <div>
+          <strong>${c.name}</strong>${frenteBadge}
+          <span class="badge ${campaignBadge(c.status)}" style="margin-left:8px">${c.status}</span>
+        </div>
+        <div class="actions">
+          ${c.status !== 'running' ? `<button class="btn btn-green btn-sm" onclick="controlCampaign(${c.id},'start')">▶ Iniciar</button>` : ''}
+          ${c.status === 'running' ? `<button class="btn btn-yellow btn-sm" onclick="controlCampaign(${c.id},'pause')">⏸ Pausar</button>` : ''}
+          <button class="btn btn-gray btn-sm" onclick="controlCampaign(${c.id},'stop')">⏹</button>
+          <button class="btn btn-blue btn-sm" onclick="editCampaign(${c.id})">✏</button>
+          <button class="btn btn-red btn-sm" onclick="deleteCampaign(${c.id})">✕</button>
+        </div>
+      </div>
+      <div class="grid-3" style="margin-top:14px">
+        <div class="stat-box"><div class="num" style="color:var(--green)">${c.sent}</div><div class="lbl">Enviados</div></div>
+        <div class="stat-box"><div class="num" style="color:var(--red)">${c.failed}</div><div class="lbl">Erros</div></div>
+        <div class="stat-box"><div class="num" style="color:var(--blue)">${c.pending}</div><div class="lbl">Pendentes</div></div>
+      </div>
+      <div style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;font-size:.78rem;color:#888;margin-bottom:4px">
+          <span>Progresso</span><span>${pct}% de ${c.total}</span>
+        </div>
+        <div class="progress-wrap"><div class="progress-bar" id="bar-${c.id}" style="width:${pct}%"></div></div>
+      </div>
+      <div style="margin-top:8px;font-size:.78rem;color:#888">
+        Delay: ${c.delay_min}s–${c.delay_max}s &nbsp;|&nbsp; ${c.hour_start}h–${c.hour_end}h &nbsp;|&nbsp; Limite: ${c.daily_limit}/dia
+      </div>
+      ${c.failed > 0 ? `<button class="btn btn-gray btn-sm" style="margin-top:8px" onclick="resetFailed(${c.id})">🔄 Retentar ${c.failed} erros</button>` : ''}
+    </div>`
+  }).join('')
+}
+
+async function controlCampaign(id, action) {
+  await fetch(`/api/campaigns/${id}/${action}`, { method:'POST' })
+  loadCampaigns()
+}
+async function deleteCampaign(id) {
+  if (!confirm('Apagar campanha e todos os contatos da fila?')) return
+  await fetch('/api/campaigns/' + id, { method:'DELETE' })
+  loadCampaigns()
+}
+async function resetFailed(id) {
+  await fetch(`/api/campaigns/${id}/reset-failed`, { method:'POST' })
+  loadCampaigns()
+}
+
+// ─── Modal campanha ───────────────────────────
+let editingId = null
+
+function openCampaignModal(camp = null) {
+  editingId = camp?.id || null
+  document.getElementById('modal-title').textContent = camp ? 'Editar Campanha' : 'Nova Campanha'
+  document.getElementById('camp-id').value           = camp?.id || ''
+  document.getElementById('camp-name').value         = camp?.name || ''
+  document.getElementById('camp-message').value      = camp?.message || ''
+  document.getElementById('camp-delay-min').value    = camp?.delay_min ?? 8
+  document.getElementById('camp-delay-max').value    = camp?.delay_max ?? 25
+  document.getElementById('camp-hour-start').value   = camp?.hour_start ?? 8
+  document.getElementById('camp-hour-end').value     = camp?.hour_end ?? 20
+  document.getElementById('camp-daily').value        = camp?.daily_limit ?? 200
+  document.getElementById('camp-rotation').value     = camp?.rotation || 'round-robin'
+  document.getElementById('import-result').textContent = ''
+  document.getElementById('camp-tpl-preview').style.display = 'none'
+  currentFrente = null
+  document.querySelectorAll('.frente-btn').forEach(b => b.classList.remove('selected'))
+  populateTemplateSelect(null)
+  document.getElementById('campaign-modal').classList.add('open')
+}
+
+function editCampaign(id) { openCampaignModal(campaigns.find(c => c.id === id)) }
+function closeCampaignModal() { document.getElementById('campaign-modal').classList.remove('open'); editingId = null }
+
+function selectFrente(frente) {
+  currentFrente = frente
+  document.querySelectorAll('.frente-btn').forEach(b => b.classList.remove('selected'))
+  document.getElementById('btn-frente-' + frente).classList.add('selected')
+
+  const group = frente === 'talentos' ? 'CATHO_NOVOS_TALENTOS' : 'CORRETORES_CRECI'
+  populateTemplateSelect(group)
+
+  const info = document.getElementById('import-format-info')
+  if (frente === 'talentos') {
+    info.innerHTML = '📋 <strong>Novos Talentos:</strong> suba o CSV da Catho. Colunas <code>Whatsapp</code>/<code>Telefone1</code>, <code>PrimeiroNome</code>, <code>Cidade</code>, <code>Bairro</code> mapeadas automaticamente.'
+    info.style.display = 'block'
+  } else {
+    info.innerHTML = '🏠 <strong>Corretores CRECI:</strong> suba o CSV do CRECI. Colunas <code>RHI_IG_TELEFONE_WA</code>, <code>Nome</code>, <code>CIDADE</code>, <code>CRECI</code> mapeadas automaticamente.'
+    info.style.display = 'block'
+  }
+}
+
+function populateTemplateSelect(group) {
+  const sel = document.getElementById('camp-tpl-select')
+  const filtered = group ? allTemplates.filter(t => t.campaign_group === group && t.active) : allTemplates.filter(t => t.active)
+  sel.innerHTML = '<option value="">— Selecione um template —</option>' +
+    filtered.map(t => `<option value="${t.id}">[${t.order_seq}] ${t.title}</option>`).join('')
+  document.getElementById('camp-tpl-preview').style.display = 'none'
+}
+
+function onSelectTemplate() {
+  const id = Number(document.getElementById('camp-tpl-select').value)
+  const t  = allTemplates.find(x => x.id === id)
+  if (!t) { document.getElementById('camp-tpl-preview').style.display = 'none'; return }
+  document.getElementById('camp-message').value = t.message
+
+  // Preview com valores de exemplo substituídos
+  const hora = new Date().getHours()
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
+  const operador = document.getElementById('header-operador').textContent || 'Ana'
+  const isCreci  = t.campaign_group === 'CORRETORES_CRECI'
+
+  const exemplos = {
+    saudacao:       saudacao,
+    primeiro_nome:  isCreci ? 'Carlos'      : 'João',
+    nome:           isCreci ? 'Carlos Silva' : 'João Mendes',
+    cidade_fallback: isCreci ? 'São Paulo'   : 'Campinas',
+    bairro_frase:   isCreci ? ''             : 'Vila Madalena',
+    creci_frase:    isCreci ? ' (CRECI 98765)' : '',
+    cargo:          isCreci ? 'Corretor de Imóveis' : 'Analista de RH',
+    operador,
+    email:          'joao@email.com',
+    instagram:      '@carlossilva_imoveis'
+  }
+
+  const preview = t.message.replace(/\{(\w+)\}/g, (_, key) => {
+    const val = exemplos[key]
+    if (val === undefined) return `{${key}}`
+    // destaca a variável substituída em verde
+    return `<span style="color:var(--green-dark);font-weight:600">${val || ''}</span>`
+  })
+
+  document.getElementById('camp-tpl-text').innerHTML =
+    `<div style="margin-bottom:8px;font-size:.75rem;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:.04em">
+      📱 Preview com dados de exemplo
+    </div>` + preview
+
+  document.getElementById('camp-tpl-notes').textContent = t.notes ? `💡 ${t.notes}` : ''
+  document.getElementById('camp-tpl-preview').style.display = 'block'
+}
+
+async function saveCampaign() {
+  const body = {
+    name:        document.getElementById('camp-name').value.trim(),
+    message:     document.getElementById('camp-message').value.trim(),
+    delay_min:   document.getElementById('camp-delay-min').value,
+    delay_max:   document.getElementById('camp-delay-max').value,
+    hour_start:  document.getElementById('camp-hour-start').value,
+    hour_end:    document.getElementById('camp-hour-end').value,
+    daily_limit: document.getElementById('camp-daily').value,
+    rotation:    document.getElementById('camp-rotation').value
+  }
+  if (!body.name || !body.message) return alert('Preencha nome e mensagem')
+
+  let campId = editingId
+  if (campId) {
+    await fetch('/api/campaigns/' + campId, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+  } else {
+    const res = await fetch('/api/campaigns', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+    const data = await res.json()
+    if (data.error) return alert('Erro ao salvar: ' + data.error)
+    campId = data.id
+  }
+
+  document.getElementById('camp-id').value = campId
+
+  // Se tiver CSV selecionado, importa automaticamente antes de fechar
+  const csvFile = document.getElementById('import-csv').files[0]
+  const sheetId = document.getElementById('import-sheet-id').value.trim()
+
+  if (csvFile) {
+    document.getElementById('import-result').textContent = '⏳ Importando contatos...'
+    const fd = new FormData()
+    fd.append('csv', csvFile)
+    if (currentFrente) fd.append('format', currentFrente === 'talentos' ? 'talentos' : 'creci')
+    const r = await fetch(`/api/campaigns/${campId}/import/csv`, { method:'POST', body:fd })
+    const d = await r.json()
+    if (d.error) {
+      document.getElementById('import-result').textContent = '❌ ' + d.error
+      loadCampaigns()
+      return
+    }
+    loadCampaigns()
+    closeCampaignModal()
+    alert(`✅ Campanha salva!\n${d.imported} contatos importados de ${d.total} linhas (formato: ${d.format})`)
+    return
+  }
+
+  if (sheetId) {
+    document.getElementById('import-result').textContent = '⏳ Importando do Sheets...'
+    const range  = document.getElementById('import-sheet-range').value.trim() || 'A1:Z2000'
+    const format = currentFrente === 'talentos' ? 'talentos' : currentFrente === 'creci' ? 'creci' : null
+    const r = await fetch(`/api/campaigns/${campId}/import/sheets`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ sheetId, range, format })
+    })
+    const d = await r.json()
+    if (d.error) {
+      document.getElementById('import-result').textContent = '❌ ' + d.error
+      loadCampaigns()
+      return
+    }
+    loadCampaigns()
+    closeCampaignModal()
+    alert(`✅ Campanha salva!\n${d.imported} contatos importados de ${d.total} linhas (formato: ${d.format})`)
+    return
+  }
+
+  // Sem base: só salva e fecha
+  loadCampaigns()
+  closeCampaignModal()
+}
+
+async function importCSV() {
+  const campId = document.getElementById('camp-id').value
+  if (!campId) { alert('Salve a campanha primeiro'); return }
+  const file = document.getElementById('import-csv').files[0]
+  if (!file) return alert('Selecione um arquivo CSV')
+  const fd = new FormData()
+  fd.append('csv', file)
+  if (currentFrente) fd.append('format', currentFrente === 'talentos' ? 'talentos' : 'creci')
+  const res  = await fetch(`/api/campaigns/${campId}/import/csv`, { method:'POST', body:fd })
+  const data = await res.json()
+  document.getElementById('import-result').textContent = data.error
+    ? '❌ ' + data.error
+    : `✅ ${data.imported} contatos importados de ${data.total} linhas (formato: ${data.format})`
+  if (!data.error) loadCampaigns()
+}
+
+async function importSheets() {
+  const campId = document.getElementById('camp-id').value
+  if (!campId) { alert('Salve a campanha primeiro'); return }
+  const sheetId = document.getElementById('import-sheet-id').value.trim()
+  if (!sheetId) return alert('Informe o ID da planilha')
+  const range  = document.getElementById('import-sheet-range').value.trim() || 'A1:Z2000'
+  const format = currentFrente === 'talentos' ? 'talentos' : currentFrente === 'creci' ? 'creci' : null
+  const res  = await fetch(`/api/campaigns/${campId}/import/sheets`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ sheetId, range, format })
+  })
+  const data = await res.json()
+  document.getElementById('import-result').textContent = data.error
+    ? '❌ ' + data.error
+    : `✅ ${data.imported} contatos importados de ${data.total} linhas (formato: ${data.format})`
+  if (!data.error) loadCampaigns()
+}
+
+// ─── Templates ────────────────────────────────
+async function loadTemplates() {
+  const res = await fetch('/api/templates')
+  allTemplates = await res.json()
+  renderTemplates()
+}
+
+function filterTemplates() { renderTemplates() }
+
+function renderTemplates() {
+  const group  = document.getElementById('tpl-filter-group').value
+  const active = document.getElementById('tpl-filter-active').value
+  let list = allTemplates
+  if (group)      list = list.filter(t => t.campaign_group === group)
+  if (active !== '') list = list.filter(t => String(t.active) === active)
+
+  const el = document.getElementById('templates-list')
+  if (!list.length) { el.innerHTML = '<p style="color:#888">Nenhum template encontrado.</p>'; return }
+
+  const byGroup = {}
+  for (const t of list) {
+    const g = t.campaign_group || '(sem grupo)'
+    if (!byGroup[g]) byGroup[g] = []
+    byGroup[g].push(t)
+  }
+
+  const groupColors = { CATHO_NOVOS_TALENTOS: 'var(--blue)', CORRETORES_CRECI: 'var(--purple)' }
+  const groupLabels = { CATHO_NOVOS_TALENTOS: 'Novos Talentos — Catho', CORRETORES_CRECI: 'Corretores CRECI' }
+
+  el.innerHTML = Object.entries(byGroup).map(([g, items]) => `
+    <div style="margin-bottom:24px">
+      <div style="font-size:.78rem;font-weight:700;color:${groupColors[g]||'#666'};text-transform:uppercase;
+                  letter-spacing:.05em;margin-bottom:8px;padding-bottom:4px;
+                  border-bottom:2px solid ${groupColors[g]||'#ddd'}">${groupLabels[g]||g}</div>
+      <table>
+        <thead><tr>
+          <th style="width:130px">ID</th><th>Título</th><th>Mensagem</th>
+          <th style="width:50px;text-align:center">Seq</th>
+          <th style="width:70px;text-align:center">Status</th>
+          <th style="width:170px">Ações</th>
+        </tr></thead>
+        <tbody>
+          ${items.map(t => `<tr>
+            <td><code style="font-size:.78rem">${t.template_id}</code></td>
+            <td style="font-size:.85rem">${t.title}</td>
+            <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+                       color:#555;font-size:.8rem" title="${esc(t.message)}">${esc(t.message)}</td>
+            <td style="text-align:center;color:#888">${t.order_seq}</td>
+            <td style="text-align:center">
+              <span class="badge ${t.active?'badge-green':'badge-gray'}">${t.active?'Ativo':'Off'}</span>
+            </td>
+            <td><div class="actions">
+              <button class="btn btn-green btn-sm" onclick="usarTemplate(${t.id})" title="Usar em campanha">Usar</button>
+              <button class="btn btn-blue btn-sm" onclick="editTemplate(${t.id})">✏</button>
+              <button class="btn btn-gray btn-sm" onclick="toggleTemplate(${t.id})">${t.active?'Off':'On'}</button>
+              <button class="btn btn-red btn-sm" onclick="deleteTemplate(${t.id})">✕</button>
+            </div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <p style="font-size:.75rem;color:#aaa;margin-top:4px">${items.filter(t=>t.notes).map(t=>`[${t.order_seq}] ${t.notes}`).join(' &nbsp;·&nbsp; ')}</p>
+    </div>
+  `).join('')
+}
+
+function usarTemplate(id) {
+  const t = allTemplates.find(x => x.id === id)
+  if (!t) return
+  showPage('campaigns')
+  setTimeout(() => {
+    openCampaignModal()
+    if (t.campaign_group === 'CATHO_NOVOS_TALENTOS') selectFrente('talentos')
+    else if (t.campaign_group === 'CORRETORES_CRECI') selectFrente('creci')
+    document.getElementById('camp-tpl-select').value = id
+    onSelectTemplate()
+  }, 80)
+}
+
+async function toggleTemplate(id) {
+  await fetch(`/api/templates/${id}/toggle`, { method:'POST' })
+  loadTemplates()
+}
+async function deleteTemplate(id) {
+  if (!confirm('Apagar este template?')) return
+  await fetch('/api/templates/' + id, { method:'DELETE' })
+  loadTemplates()
+}
+
+// ─── Modal template ───────────────────────────
+let editingTplId = null
+
+function openTemplateModal(tpl = null) {
+  editingTplId = tpl?.id || null
+  document.getElementById('tpl-modal-title').textContent = tpl ? 'Editar Template' : 'Novo Template'
+  document.getElementById('tpl-id').value           = tpl?.id || ''
+  document.getElementById('tpl-template-id').value  = tpl?.template_id || ''
+  document.getElementById('tpl-group').value         = tpl?.campaign_group || 'CATHO_NOVOS_TALENTOS'
+  document.getElementById('tpl-title').value         = tpl?.title || ''
+  document.getElementById('tpl-message').value       = tpl?.message || ''
+  document.getElementById('tpl-notes').value         = tpl?.notes || ''
+  document.getElementById('tpl-order').value         = tpl?.order_seq ?? 0
+  document.getElementById('tpl-active').checked      = tpl ? Boolean(tpl.active) : true
+  document.getElementById('template-modal').classList.add('open')
+}
+function editTemplate(id) { openTemplateModal(allTemplates.find(x => x.id === id)) }
+function closeTemplateModal() { document.getElementById('template-modal').classList.remove('open'); editingTplId = null }
+
+async function saveTemplate() {
+  const body = {
+    template_id:    document.getElementById('tpl-template-id').value.trim(),
+    campaign_group: document.getElementById('tpl-group').value,
+    title:          document.getElementById('tpl-title').value.trim(),
+    message:        document.getElementById('tpl-message').value.trim(),
+    notes:          document.getElementById('tpl-notes').value.trim(),
+    order_seq:      document.getElementById('tpl-order').value,
+    active:         document.getElementById('tpl-active').checked ? 1 : 0,
+    account: '', project: '', type: 'text'
+  }
+  if (!body.template_id || !body.message) return alert('ID e mensagem são obrigatórios')
+  if (editingTplId) {
+    await fetch('/api/templates/' + editingTplId, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+  } else {
+    await fetch('/api/templates', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+  }
+  closeTemplateModal()
+  loadTemplates()
+}
+
+// ─── Logs ─────────────────────────────────────
+async function loadLogs() {
+  const res = await fetch('/api/logs')
+  const logs = await res.json()
+  const el = document.getElementById('log-list')
+  if (!logs.length) { el.innerHTML = '<p style="color:#888">Sem registros ainda.</p>'; return }
+  el.innerHTML = logs.map(l => `
+    <div class="log-row">
+      <span class="ts">${(l.created_at||'').slice(0,19).replace('T',' ')}</span>
+      <span class="ph">${l.phone}</span>
+      <span><span class="badge ${l.status==='sent'?'badge-green':l.status==='error'||l.status==='failed'?'badge-red':'badge-gray'}">${l.status}</span></span>
+      <span style="color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.message||'')}</span>
+    </div>
+  `).join('')
+}
+
+// ─── Socket.IO ────────────────────────────────
+socket.on('init', ({ instances }) => renderInstances(instances))
+socket.on('instance:update', () => { if (document.getElementById('page-instances').classList.contains('active')) loadInstances() })
+socket.on('campaign:progress', () => loadCampaigns())
+socket.on('campaign:status',   () => loadCampaigns())
+socket.on('campaign:done',     () => loadCampaigns())
+
+// ─── Helpers ──────────────────────────────────
+function statusBadge(s, banned) {
+  if (banned) return 'badge-red'
+  return { connected:'badge-green', reconnecting:'badge-yellow', connecting:'badge-yellow', qr:'badge-yellow', disconnected:'badge-gray', banned:'badge-red' }[s] || 'badge-gray'
+}
+function statusLabel(s, banned) {
+  if (banned) return 'Banido'
+  return { connected:'Conectado', disconnected:'Desconectado', reconnecting:'Reconectando...', connecting:'Conectando...', qr:'Aguardando QR', banned:'Banido' }[s] || s
+}
+function campaignBadge(s) {
+  return { running:'badge-green', paused:'badge-yellow', done:'badge-blue', error:'badge-red' }[s] || 'badge-gray'
+}
+function esc(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id)
+  if (el) el.classList.remove('open')
+}
+
+// Fecha modais ao clicar fora
+['campaign-modal','template-modal','settings-modal','decision-modal','message-modal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.target.classList.remove('open')
+  })
+})
+
+// ─── Sessão / Auth ────────────────────────────────
+let currentUser = null
+
+async function initSession() {
+  try {
+    const res = await fetch('/auth/me')
+    if (!res.ok) { window.location.href = '/login.html'; return }
+    currentUser = await res.json()
+    document.getElementById('header-user').textContent = `(${currentUser.name})`
+    if (currentUser.role === 'admin') {
+      document.getElementById('nav-users').style.display = 'block'
+      document.getElementById('nav-admin').style.display = 'block'
+    }
+  } catch (_) {
+    window.location.href = '/login.html'
+  }
+}
+
+async function logout() {
+  await fetch('/auth/logout', { method: 'POST' })
+  window.location.href = '/login.html'
+}
+
+// ─── Usuários ─────────────────────────────────────
+let allUsers = []
+let editingUserId = null
+
+async function loadUsers() {
+  const res = await fetch('/api/users')
+  if (!res.ok) return
+  allUsers = await res.json()
+  const tbody = document.getElementById('users-tbody')
+  if (!allUsers.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:#888">Nenhum usuário.</td></tr>'; return }
+  tbody.innerHTML = allUsers.map(u => `
+    <tr style="opacity:${u.active ? 1 : 0.55}">
+      <td><strong>${u.name}</strong></td>
+      <td><code>${u.username}</code></td>
+      <td><span class="badge ${u.role==='admin'?'badge-purple':'badge-blue'}">${u.role==='admin'?'Admin':'Operador'}</span></td>
+      <td style="font-size:.8rem;color:#888">${u.last_login ? u.last_login.slice(0,16).replace('T',' ') : 'Nunca'}</td>
+      <td style="text-align:center">
+        <span class="badge ${u.active?'badge-green':'badge-gray'}" style="cursor:pointer" title="${u.active?'Clique para desativar':'Clique para ativar'}" onclick="toggleUserActive(${u.id},${u.active})">
+          ${u.active ? '✅ Ativo' : '⛔ Inativo'}
+        </span>
+      </td>
+      <td><div class="actions">
+        <button class="btn btn-blue btn-sm" onclick="editUser(${u.id})" title="Editar">✏ Editar</button>
+        ${u.id !== currentUser?.id ? `<button class="btn btn-red btn-sm" onclick="deleteUser(${u.id})" title="Excluir">✕</button>` : ''}
+      </div></td>
+    </tr>
+  `).join('')
+}
+
+function openUserModal(user = null) {
+  editingUserId = user?.id || null
+  document.getElementById('user-modal-title').textContent = user ? 'Editar Usuário' : 'Novo Usuário'
+  document.getElementById('user-id').value       = user?.id || ''
+  document.getElementById('user-name').value     = user?.name || ''
+  document.getElementById('user-username').value = user?.username || ''
+  document.getElementById('user-password').value = ''
+  document.getElementById('user-role').value     = user?.role || 'operator'
+  document.getElementById('user-active').checked = user ? Boolean(user.active) : true
+  document.getElementById('user-pass-hint').style.display = user ? 'inline' : 'none'
+  document.getElementById('user-modal').classList.add('open')
+}
+
+function editUser(id) { openUserModal(allUsers.find(u => u.id === id)) }
+function closeUserModal() { document.getElementById('user-modal').classList.remove('open'); editingUserId = null }
+
+async function toggleUserActive(id, currentActive) {
+  const u = allUsers.find(x => x.id === id)
+  if (!u) return
+  const newActive = currentActive ? 0 : 1
+  const label = newActive ? 'ativar' : 'desativar'
+  if (!confirm(`Deseja ${label} o usuário "${u.name}"?`)) return
+  await fetch(`/api/users/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: u.name, role: u.role, active: newActive })
+  })
+  loadUsers()
+}
+
+function togglePassField(id, btn) {
+  const inp = document.getElementById(id)
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈' }
+  else { inp.type = 'password'; btn.textContent = '👁' }
+}
+
+function togglePassVis(inputId, eyeId) {
+  const inp = document.getElementById(inputId)
+  const eye = document.getElementById(eyeId)
+  if (inp.type === 'password') { inp.type = 'text'; eye.textContent = '🙈' }
+  else { inp.type = 'password'; eye.textContent = '👁' }
+}
+
+async function saveUser() {
+  const body = {
+    name:     document.getElementById('user-name').value.trim(),
+    username: document.getElementById('user-username').value.trim(),
+    password: document.getElementById('user-password').value,
+    role:     document.getElementById('user-role').value,
+    active:   document.getElementById('user-active').checked ? 1 : 0
+  }
+  if (!body.name || !body.username) return alert('Nome e usuário são obrigatórios')
+  if (!editingUserId && !body.password) return alert('Informe uma senha para o novo usuário')
+
+  const url    = editingUserId ? `/api/users/${editingUserId}` : '/api/users'
+  const method = editingUserId ? 'PUT' : 'POST'
+  const res    = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) })
+  const data   = await res.json()
+  if (data.error) return alert('Erro: ' + data.error)
+  closeUserModal()
+  loadUsers()
+}
+
+async function deleteUser(id) {
+  if (!confirm('Remover este usuário?')) return
+  await fetch('/api/users/' + id, { method: 'DELETE' })
+  loadUsers()
+}
+
+async function changePassword() {
+  const current = document.getElementById('cp-current').value
+  const newPass  = document.getElementById('cp-new').value
+  const result   = document.getElementById('cp-result')
+  if (!current || !newPass) { result.textContent = '❌ Preencha os dois campos'; return }
+  if (newPass.length < 6)   { result.textContent = '❌ Nova senha precisa ter pelo menos 6 caracteres'; return }
+  const res  = await fetch('/api/users/change-password', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ current, newPassword: newPass })
+  })
+  const data = await res.json()
+  result.textContent = data.error ? '❌ ' + data.error : '✅ Senha alterada com sucesso'
+  if (!data.error) { document.getElementById('cp-current').value = ''; document.getElementById('cp-new').value = '' }
+}
+
+document.getElementById('user-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeUserModal()
+})
+
+// Inicialização
+initSession().then(() => {
+  loadSettings()
+  loadInstances()
+  loadTemplates()
+  checkTunnelUrl()
+})
+
+// ─── URL do Túnel ─────────────────────────────────
+async function checkTunnelUrl() {
+  try {
+    const r = await fetch('/api/tunnel-url')
+    const data = await r.json()
+    const banner = document.getElementById('tunnel-banner')
+    const link   = document.getElementById('tunnel-url-link')
+    if (data.url) {
+      link.href = data.url
+      link.textContent = data.url
+      banner.style.display = 'flex'
+    } else {
+      banner.style.display = 'none'
+    }
+  } catch (_) {}
+}
+
+function copyTunnelUrl() {
+  const url = document.getElementById('tunnel-url-link').textContent
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = event.target
+    const orig = btn.textContent
+    btn.textContent = '✅ Copiado!'
+    setTimeout(() => { btn.textContent = orig }, 2000)
+  })
+}
+
+// ─── CHATBOT ──────────────────────────────────────────────────
+
+let _botCfgDirty = false
+
+async function loadBotConfig() {
+  const res = await fetch('/api/bot/config')
+  if (!res.ok) return
+  const cfg = await res.json()
+
+  // Modo do bot
+  let modo = (cfg.bot_modo || '').toUpperCase()
+  if (!modo) modo = (cfg.bot_ativo||'').toUpperCase() === 'SIM' ? 'COMPLETO' : 'OFF'
+  _renderBotModo(modo)
+
+  document.getElementById('bot-humano-phone').value   = cfg.bot_humano_phone   || ''
+  document.getElementById('bot-humano-nome').value    = cfg.bot_humano_nome    || 'Marcela'
+  document.getElementById('bot-operation-name').value = cfg.bot_operation_name || 'RHIMOB | Corretor CRECI | Grupo Kaza'
+  document.getElementById('bot-site-vagas').value     = cfg.bot_site_vagas_url || 'https://www.rhimob.com.br/vagas'
+  document.getElementById('bot-slot1-dia').value      = cfg.bot_slot_1_dia     || 'TERCA'
+  document.getElementById('bot-slot1-hora').value     = cfg.bot_slot_1_hora    || '10:00'
+  document.getElementById('bot-slot2-dia').value      = cfg.bot_slot_2_dia     || 'QUINTA'
+  document.getElementById('bot-slot2-hora').value     = cfg.bot_slot_2_hora    || '14:00'
+
+  _botCfgDirty = false
+  document.getElementById('btn-save-bot-cfg').disabled = true
+
+  await loadBotStates()
+}
+
+function botConfigChanged() {
+  _botCfgDirty = true
+  document.getElementById('btn-save-bot-cfg').disabled = false
+}
+
+function _renderBotModo(modo) {
+  ['OFF','ENTRADA','COMPLETO'].forEach(m => {
+    const btn = document.getElementById('modo-' + m.toLowerCase())
+    if (btn) btn.classList.toggle('active', m === modo)
+  })
+}
+
+async function setBotModo(modo) {
+  _renderBotModo(modo)
+  // Mantém compatibilidade com bot_ativo
+  const ativo = modo !== 'OFF' ? 'SIM' : 'NAO'
+  await fetch('/api/bot/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bot_modo: modo, bot_ativo: ativo })
+  })
+}
+
+async function saveBotConfig() {
+  const body = {
+    bot_humano_phone:   document.getElementById('bot-humano-phone').value.trim(),
+    bot_humano_nome:    document.getElementById('bot-humano-nome').value.trim(),
+    bot_operation_name: document.getElementById('bot-operation-name').value.trim(),
+    bot_site_vagas_url: document.getElementById('bot-site-vagas').value.trim(),
+    bot_slot_1_dia:     document.getElementById('bot-slot1-dia').value,
+    bot_slot_1_hora:    document.getElementById('bot-slot1-hora').value.trim(),
+    bot_slot_2_dia:     document.getElementById('bot-slot2-dia').value,
+    bot_slot_2_hora:    document.getElementById('bot-slot2-hora').value.trim(),
+  }
+  const res = await fetch('/api/bot/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) { alert('Erro ao salvar'); return }
+  _botCfgDirty = false
+  document.getElementById('btn-save-bot-cfg').disabled = true
+  alert('Configurações salvas!')
+}
+
+async function loadBotStates() {
+  const res = await fetch('/api/bot/states')
+  if (!res.ok) return
+  const rows = await res.json()
+  const tbody = document.getElementById('bot-states-tbody')
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:#888;padding:12px 8px">Nenhuma conversa registrada.</td></tr>'
+    return
+  }
+  const stageColors = { WEBHOOK:'badge-blue', INFO2:'badge-blue', COMPLEMENTO:'badge-purple',
+    AGENDAMENTO:'badge-green', HUMANO:'badge-gray', NEG:'badge-gray', FINALIZADO:'badge-gray' }
+  tbody.innerHTML = rows.map(r => {
+    const stageColor = stageColors[r.stage] || 'badge-blue'
+    const situacao = r.blocked ? '<span class="badge badge-gray">Encerrado</span>'
+      : r.humano ? '<span class="badge badge-purple">Humano</span>'
+      : '<span class="badge badge-green">Ativo</span>'
+    const ts = r.updated_at ? r.updated_at.slice(0,16).replace('T',' ') : '-'
+    return `<tr style="border-bottom:1px solid #f0f0f0">
+      <td style="padding:7px 8px"><code style="font-size:.8rem">${r.phone}</code></td>
+      <td style="padding:7px 8px"><span class="badge ${stageColor}">${r.stage}</span></td>
+      <td style="padding:7px 8px;font-size:.8rem;color:#555">${r.last_intent || '-'}</td>
+      <td style="padding:7px 8px">${situacao}</td>
+      <td style="padding:7px 8px;font-size:.78rem;color:#888">${ts}</td>
+      <td style="padding:7px 8px">
+        <button class="btn btn-red btn-sm" onclick="resetBotState('${r.phone}')" title="Reiniciar conversa">✕</button>
+      </td>
+    </tr>`
+  }).join('')
+}
+
+async function resetBotState(phone) {
+  if (!confirm(`Reiniciar conversa de ${phone}? O bot voltará a responder a esta pessoa.`)) return
+  await fetch(`/api/bot/states/${phone}`, { method: 'DELETE' })
+  loadBotStates()
+}
+
+// Carrega chatbot ao acessar a aba
+const _origShowPage = showPage
+window.showPage = function(name, noEvent) {
+  _origShowPage(name, noEvent)
+  if (name === 'chatbot') { loadBotConfig(); loadBotDecisions(); loadBotMessages() }
+  if (name === 'kanban')  loadKanban()
+  if (name === 'admin')   { loadAdminUsers(); loadAdminCampaigns() }
+}
+
+// ─── ADMIN ────────────────────────────────────────────────────
+
+async function loadAdminUsers() {
+  const res = await fetch('/api/admin/users-simple')
+  if (!res.ok) return
+  const users = await res.json()
+  const sel = document.getElementById('preload-user')
+  sel.innerHTML = '<option value="">Selecione o usuário...</option>' +
+    users.map(u => `<option value="${u.id}">${u.name} (@${u.username})</option>`).join('')
+}
+
+async function loadAdminCampaigns() {
+  const res = await fetch('/api/admin/campaigns')
+  if (!res.ok) return
+  const rows = await res.json()
+  const tbody = document.getElementById('admin-campaigns-tbody')
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#888;text-align:center;padding:16px">Nenhuma campanha criada ainda.</td></tr>'
+    return
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td><strong>${r.user_name}</strong></td>
+      <td>${r.name}</td>
+      <td style="text-align:center"><span class="badge badge-blue">${r.total_contacts}</span></td>
+      <td style="text-align:center"><span class="badge badge-green">${r.sent}</span></td>
+      <td style="font-size:.8rem;color:#888">${(r.created_at||'').slice(0,16).replace('T',' ')}</td>
+    </tr>
+  `).join('')
+}
+
+async function preloadCSV() {
+  const userId   = document.getElementById('preload-user').value
+  const name     = document.getElementById('preload-name').value.trim()
+  const file     = document.getElementById('preload-file').files[0]
+  const format   = document.getElementById('preload-format').value
+  const message  = document.getElementById('preload-message').value.trim()
+  const resultEl = document.getElementById('preload-result')
+
+  if (!userId)  { alert('Selecione o usuário destino'); return }
+  if (!name)    { alert('Digite o nome da campanha'); return }
+  if (!file)    { alert('Selecione o arquivo CSV'); return }
+
+  resultEl.innerHTML = '<span style="color:#888">⏳ Processando...</span>'
+
+  const fd = new FormData()
+  fd.append('csv', file)
+  fd.append('target_user_id', userId)
+  fd.append('campaign_name', name)
+  fd.append('message', message)
+  if (format) fd.append('format', format)
+
+  try {
+    const res  = await fetch('/api/admin/preload-csv', { method: 'POST', body: fd })
+    const data = await res.json()
+    if (!res.ok) {
+      resultEl.innerHTML = `<span style="color:#e74c3c">❌ Erro: ${data.error}</span>`
+      return
+    }
+    resultEl.innerHTML = `
+      <div style="background:#eafaf1;border:1px solid #27ae60;border-radius:6px;padding:12px;color:#1e8449">
+        ✅ <strong>Campanha criada com sucesso!</strong><br>
+        📋 Nome: <strong>${name}</strong><br>
+        👤 Usuário: ${document.getElementById('preload-user').selectedOptions[0].text}<br>
+        📞 Contatos importados: <strong>${data.imported}</strong> de ${data.total} linhas<br>
+        🔍 Formato detectado: <strong>${data.format}</strong>
+      </div>`
+    // Limpa campos
+    document.getElementById('preload-name').value = ''
+    document.getElementById('preload-file').value = ''
+    loadAdminCampaigns()
+  } catch (e) {
+    resultEl.innerHTML = `<span style="color:#e74c3c">❌ Erro de conexão</span>`
+  }
+}
+
+// ─── KANBAN ───────────────────────────────────────────────────
+
+let _kbData = { columns: [], cards: [] }
+let _dragCardId = null
+
+async function loadKanban() {
+  const res = await fetch('/api/kanban/columns')
+  if (!res.ok) return
+  _kbData = await res.json()
+  renderKanban()
+}
+
+function renderKanban() {
+  const board = document.getElementById('kanban-board')
+  const { columns, cards } = _kbData
+
+  board.innerHTML = columns.map(col => {
+    const colCards = cards.filter(c => c.column_id === col.id)
+    const cardsHtml = colCards.map(card => renderCard(card)).join('')
+    return `
+      <div class="kb-col" id="kbcol-${col.id}"
+           ondragover="kbDragOver(event,${col.id})"
+           ondrop="kbDrop(event,${col.id})"
+           ondragleave="kbDragLeave(event)">
+        <div class="kb-col-header" style="background:${col.color}">
+          <span>${col.name}</span>
+          <span class="kb-count">${colCards.length}</span>
+          <div class="kb-col-actions">
+            <button onclick="editKanbanColumn(${col.id},'${col.name.replace(/'/g,"\\'")}','${col.color}')" title="Editar coluna">✏</button>
+            <button onclick="deleteKanbanColumn(${col.id})" title="Excluir coluna">✕</button>
+          </div>
+        </div>
+        <div class="kb-cards" id="kbcards-${col.id}">${cardsHtml}</div>
+        <button class="kb-add-card" onclick="openCardModal(null,${col.id})">+ Adicionar card</button>
+      </div>`
+  }).join('')
+
+  // Botão nova coluna
+  board.innerHTML += `<div class="kb-add-col" onclick="addKanbanColumn()">+ Nova coluna</div>`
+}
+
+function renderCard(card) {
+  const tagsHtml = (card.tags || '').split(',').filter(t => t.trim()).map(t =>
+    `<span class="kc-tag">${t.trim()}</span>`
+  ).join('')
+  const notes = card.notes ? `<div class="kc-notes">${card.notes.slice(0,60)}${card.notes.length>60?'…':''}</div>` : ''
+  return `
+    <div class="kb-card" id="kbcard-${card.id}"
+         draggable="true"
+         ondragstart="kbDragStart(event,${card.id})"
+         ondragend="kbDragEnd(event)"
+         onclick="openCardModal(${card.id},${card.column_id})">
+      <div class="kc-name">${card.name || 'Sem nome'}</div>
+      <div class="kc-phone">${card.phone || ''}</div>
+      ${tagsHtml ? `<div class="kc-tags">${tagsHtml}</div>` : ''}
+      ${notes}
+    </div>`
+}
+
+// ── Drag & Drop ──
+function kbDragStart(e, cardId) {
+  _dragCardId = cardId
+  setTimeout(() => document.getElementById('kbcard-' + cardId)?.classList.add('dragging'), 0)
+}
+function kbDragEnd(e) {
+  document.querySelectorAll('.kb-card').forEach(c => c.classList.remove('dragging'))
+  document.querySelectorAll('.kb-col').forEach(c => c.classList.remove('kb-drop-zone'))
+}
+function kbDragOver(e, colId) {
+  e.preventDefault()
+  document.getElementById('kbcol-' + colId)?.classList.add('kb-drop-zone')
+}
+function kbDragLeave(e) {
+  e.currentTarget.classList.remove('kb-drop-zone')
+}
+async function kbDrop(e, colId) {
+  e.preventDefault()
+  document.querySelectorAll('.kb-col').forEach(c => c.classList.remove('kb-drop-zone'))
+  if (!_dragCardId) return
+  const card = _kbData.cards.find(c => c.id === _dragCardId)
+  if (!card || card.column_id === colId) return
+  const colCards = _kbData.cards.filter(c => c.column_id === colId)
+  await fetch(`/api/kanban/cards/${_dragCardId}/move`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ column_id: colId, position: colCards.length })
+  })
+  _dragCardId = null
+  loadKanban()
+}
+
+// ── Colunas ──
+async function addKanbanColumn() {
+  const name = prompt('Nome da coluna:')
+  if (!name?.trim()) return
+  const colors = ['#3498db','#2ecc71','#e67e22','#9b59b6','#e74c3c','#1abc9c','#f39c12','#34495e']
+  const color = colors[_kbData.columns.length % colors.length]
+  await fetch('/api/kanban/columns', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name.trim(), color })
+  })
+  loadKanban()
+}
+
+async function editKanbanColumn(id, currentName, currentColor) {
+  const name = prompt('Nome da coluna:', currentName)
+  if (!name?.trim()) return
+  const color = prompt('Cor (hex):', currentColor) || currentColor
+  await fetch(`/api/kanban/columns/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name.trim(), color })
+  })
+  loadKanban()
+}
+
+async function deleteKanbanColumn(id) {
+  const col = _kbData.columns.find(c => c.id === id)
+  const count = _kbData.cards.filter(c => c.column_id === id).length
+  if (!confirm(`Excluir coluna "${col?.name}"?${count ? ` Isso removerá ${count} card(s).` : ''}`)) return
+  await fetch(`/api/kanban/columns/${id}`, { method: 'DELETE' })
+  loadKanban()
+}
+
+// ── Cards ──
+function openCardModal(cardId, colId) {
+  const card = cardId ? _kbData.cards.find(c => c.id === cardId) : null
+  document.getElementById('card-modal-title').textContent = card ? 'Editar Lead' : 'Novo Lead'
+  document.getElementById('card-id').value    = card?.id || ''
+  document.getElementById('card-col-id').value = colId
+  document.getElementById('card-name').value  = card?.name || ''
+  document.getElementById('card-phone').value = card?.phone || ''
+  document.getElementById('card-tags').value  = card?.tags || ''
+  document.getElementById('card-notes').value = card?.notes || ''
+  document.getElementById('btn-delete-card').style.display = card ? 'inline-flex' : 'none'
+  document.getElementById('card-modal').classList.add('open')
+}
+
+async function saveCard() {
+  const id    = document.getElementById('card-id').value
+  const body  = {
+    column_id: Number(document.getElementById('card-col-id').value),
+    name:  document.getElementById('card-name').value.trim(),
+    phone: document.getElementById('card-phone').value.trim(),
+    tags:  document.getElementById('card-tags').value.trim(),
+    notes: document.getElementById('card-notes').value.trim(),
+    position: 0,
+  }
+  const url    = id ? `/api/kanban/cards/${id}` : '/api/kanban/cards'
+  const method = id ? 'PUT' : 'POST'
+  await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  closeModal('card-modal')
+  loadKanban()
+}
+
+async function deleteCard() {
+  const id = document.getElementById('card-id').value
+  if (!id || !confirm('Excluir este card?')) return
+  await fetch(`/api/kanban/cards/${id}`, { method: 'DELETE' })
+  closeModal('card-modal')
+  loadKanban()
+}
+
+// ─── ANÁLISE DE FUNIL ─────────────────────────────────────────
+
+async function runAnalysis() {
+  const phone = document.getElementById('analysis-phone').value.trim()
+
+  ;['analysis-stats','analysis-result','analysis-empty','analysis-no-data'].forEach(id =>
+    document.getElementById(id).style.display = 'none'
+  )
+  document.getElementById('analysis-loading').style.display = 'block'
+
+  const url = '/api/bot/analysis' + (phone ? `?phone=${encodeURIComponent(phone)}` : '')
+  const res = await fetch(url)
+  const data = await res.json()
+
+  document.getElementById('analysis-loading').style.display = 'none'
+
+  if (data.empty || data.message) {
+    document.getElementById('analysis-no-data').style.display = 'block'
+    document.getElementById('analysis-no-data').textContent = data.message || 'Sem dados ainda.'
+    return
+  }
+
+  if (phone && !data.found) {
+    document.getElementById('analysis-no-data').style.display = 'block'
+    document.getElementById('analysis-no-data').textContent = `Nenhuma conversa registrada para ${phone}.`
+    return
+  }
+
+  // ── Stats ──
+  const statsEl = document.getElementById('analysis-stats')
+  const statBoxes = document.getElementById('analysis-stat-boxes')
+
+  if (!phone && data.stats) {
+    const s = data.stats
+    const outcomes = s.outcomes || {}
+    statBoxes.innerHTML = `
+      <div class="stat-box">
+        <div class="num" style="color:var(--purple)">${s.totalMessages || 0}</div>
+        <div class="lbl">mensagens processadas</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" style="color:var(--green)">${outcomes.humano || 0}</div>
+        <div class="lbl">chegaram ao agendamento</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" style="color:var(--red)">${outcomes.negativa || 0}</div>
+        <div class="lbl">saíram como negativa</div>
+      </div>
+    `
+    statsEl.style.display = 'block'
+
+    // Fallback por estágio
+    const fbRows = (s.fallbackByStage || []).filter(r => r.fallbacks > 0)
+    if (fbRows.length) {
+      const fbHtml = fbRows.map(r => {
+        const rate = r.total ? Math.round((r.fallbacks / r.total) * 100) : 0
+        const color = rate >= 40 ? 'var(--red)' : rate >= 20 ? 'var(--yellow)' : '#888'
+        return `<span style="font-size:.8rem;margin-right:16px">
+          <strong style="color:${color}">${r.stage}</strong>
+          <span style="color:#888">${r.fallbacks} fallbacks (${rate}%)</span>
+        </span>`
+      }).join('')
+      statBoxes.innerHTML += `
+        <div style="grid-column:1/-1;background:#f8f9fa;border-radius:8px;padding:10px 14px;font-size:.82rem">
+          <strong style="color:#555;display:block;margin-bottom:6px">Fallbacks por estágio:</strong>
+          ${fbHtml}
+        </div>`
+    }
+  }
+
+  if (phone && data.found) {
+    statBoxes.innerHTML = `
+      <div class="stat-box">
+        <div class="num" style="color:var(--purple)">${data.totalMessages}</div>
+        <div class="lbl">mensagens enviadas</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" style="color:var(--red)">${data.fallbackCount}</div>
+        <div class="lbl">não reconhecidas</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" style="color:var(--blue)">${data.state?.stage || '—'}</div>
+        <div class="lbl">estágio atual</div>
+      </div>
+    `
+    statsEl.style.display = 'block'
+
+    // Timeline
+    if (data.timeline?.length) {
+      const tlHtml = data.timeline.map(t => {
+        const color = t.fallback ? 'var(--red)' : t.intent?.includes('FALLBACK') ? 'var(--yellow)' : '#128c7e'
+        const ts = (t.ts || '').slice(11,16)
+        return `<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid #f5f5f5;font-size:.8rem">
+          <span style="color:#aaa;min-width:40px">${ts}</span>
+          <span class="badge badge-gray" style="font-size:.72rem">${t.stage}</span>
+          <span style="flex:1;color:#333">${t.text || '—'}</span>
+          <span style="color:${color};font-weight:600;font-size:.75rem">${t.intent}</span>
+        </div>`
+      }).join('')
+      statBoxes.innerHTML += `
+        <div style="grid-column:1/-1">
+          <strong style="font-size:.82rem;color:#555;display:block;margin-bottom:6px">Linha do tempo:</strong>
+          <div style="max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:6px;padding:8px">
+            ${tlHtml}
+          </div>
+        </div>`
+    }
+  }
+
+  // ── Sugestões ──
+  const sugs = data.suggestions || []
+  _lastSuggestions = sugs  // guarda para o applySuggestion
+  if (!sugs.length) {
+    document.getElementById('analysis-empty').style.display = 'block'
+    return
+  }
+
+  document.getElementById('analysis-count').textContent = sugs.length + ' sugestão' + (sugs.length > 1 ? 'ões' : '')
+  const sugEl = document.getElementById('analysis-suggestions')
+
+  const severityColor  = { high:'var(--red)', medium:'var(--yellow)', low:'#888' }
+  const severityLabel  = { high:'Alta', medium:'Média', low:'Baixa' }
+  const typeLabel = {
+    ADD_KEYWORDS: '+ Palavras-chave',
+    NEW_DECISION: '+ Nova regra',
+    HIGH_FALLBACK_STAGE: '⚠ Alto fallback',
+    MISSING_SPECIFIC_MSG: '💬 Mensagem específica',
+    DROP_STAGE: '📉 Abandono',
+    STUCK_STAGE: '🔄 Lead em loop',
+  }
+
+  sugEl.innerHTML = sugs.map((s, i) => {
+    const canApply = s.type === 'ADD_KEYWORDS' || s.type === 'NEW_DECISION'
+    const applyBtn = canApply
+      ? `<button class="btn btn-green btn-sm" onclick="applySuggestion(${i})" id="apply-btn-${i}">✔ Aplicar</button>`
+      : ''
+    const newKwsHtml = s.addKeywords
+      ? `<div style="margin-top:6px;font-size:.79rem;color:#555">
+           <strong>Palavras a adicionar:</strong>
+           ${s.addKeywords.split(',').map(w => `<span style="background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:1px 7px;margin:2px;display:inline-block">${w.trim()}</span>`).join('')}
+         </div>`
+      : ''
+    const newDecHtml = s.suggestedDecision
+      ? `<div style="margin-top:6px;font-size:.79rem;color:#555;background:#f8f9fa;padding:8px;border-radius:6px">
+           <strong>Regra sugerida:</strong><br>
+           Estágio: <code>${s.suggestedDecision.stage}</code> &nbsp;|&nbsp;
+           Intenção: <code>${s.suggestedDecision.intent}</code> &nbsp;|&nbsp;
+           Keywords: <code>${s.suggestedDecision.keywords}</code>
+         </div>`
+      : ''
+    return `
+      <div id="suggestion-${i}" style="border:1px solid #eee;border-radius:8px;padding:12px 14px;margin-bottom:10px;border-left:3px solid ${severityColor[s.severity]||'#ddd'}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <div style="flex:1">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+              <span style="font-size:.75rem;font-weight:600;color:${severityColor[s.severity]||'#888'}">${severityLabel[s.severity]||''}</span>
+              <span class="badge badge-gray" style="font-size:.72rem">${typeLabel[s.type]||s.type}</span>
+            </div>
+            <div style="font-size:.83rem;color:#333;margin-bottom:4px">${s.description}</div>
+            <div style="font-size:.8rem;color:#555;font-style:italic">👉 ${s.action}</div>
+            ${newKwsHtml}${newDecHtml}
+          </div>
+          <div style="flex-shrink:0">${applyBtn}</div>
+        </div>
+      </div>`
+  }).join('')
+
+  document.getElementById('analysis-result').style.display = 'block'
+}
+
+async function runCTACheck() {
+  ;['analysis-stats','analysis-result','analysis-empty','analysis-no-data'].forEach(id =>
+    document.getElementById(id).style.display = 'none'
+  )
+  document.getElementById('analysis-loading').style.display = 'block'
+  document.getElementById('analysis-loading').textContent = '⏳ Verificando alinhamento CTA → Keywords...'
+
+  const res  = await fetch('/api/bot/analysis?mode=cta')
+  const data = await res.json()
+  document.getElementById('analysis-loading').style.display = 'none'
+  document.getElementById('analysis-loading').textContent = '⏳ Analisando...'
+
+  if (data.empty) {
+    document.getElementById('analysis-empty').style.display = 'block'
+    document.getElementById('analysis-empty').textContent = data.message || '✅ Todas as CTAs estão cobertas pelas keywords das decisões.'
+    return
+  }
+
+  const sugs = data.suggestions || []
+  _lastSuggestions = sugs
+
+  document.getElementById('analysis-count').textContent = sugs.length + ' problema' + (sugs.length > 1 ? 's' : '') + ' de alinhamento'
+
+  const sugEl = document.getElementById('analysis-suggestions')
+  sugEl.innerHTML = `
+    <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.83rem;color:#664d03">
+      <strong>O que é verificação CTA?</strong><br>
+      O bot orienta o lead com frases como <em>"responda com TENHO INTERESSE"</em> — mas se essa frase não estiver nas keywords das decisões que avançam o funil, o lead cai em FALLBACK mesmo obedecendo a instrução.
+    </div>
+  ` + sugs.map((s, i) => {
+    const applyBtn = `<button class="btn btn-green btn-sm" onclick="applySuggestion(${i})" id="apply-btn-${i}">✔ Corrigir</button>`
+    return `
+      <div id="suggestion-${i}" style="border:1px solid #eee;border-radius:8px;padding:12px 14px;margin-bottom:10px;border-left:3px solid var(--red)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <div style="flex:1">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+              <span class="badge badge-red" style="font-size:.72rem">CTA não coberta</span>
+              <span class="badge badge-gray" style="font-size:.72rem">Estágio: ${s.stage}</span>
+              <span class="badge badge-blue" style="font-size:.72rem">${s.msgId}</span>
+            </div>
+            <div style="font-size:.85rem;color:#333;margin-bottom:6px">
+              A mensagem instrui o lead a responder: <strong style="color:var(--red)">"${s.ctaPhrase}"</strong>
+            </div>
+            <div style="font-size:.8rem;color:#555;font-style:italic;margin-bottom:6px">👉 ${s.action}</div>
+            <div style="font-size:.79rem;color:#555">
+              Adicionar às keywords de <strong>${s.decisionId ? 'intenção #' + s.decisionId : '?'}</strong>:
+              <span style="background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:1px 9px;margin-left:4px;display:inline-block">${s.addKeywords}</span>
+            </div>
+          </div>
+          <div style="flex-shrink:0">${applyBtn}</div>
+        </div>
+      </div>`
+  }).join('')
+
+  document.getElementById('analysis-result').style.display = 'block'
+}
+
+let _lastSuggestions = []
+
+async function applySuggestion(idx) {
+  const sug = _lastSuggestions[idx]
+  if (!sug) { alert('Sugestão não encontrada.'); return }
+
+  const btn = document.getElementById(`apply-btn-${idx}`)
+  if (btn) { btn.disabled = true; btn.textContent = '⏳' }
+
+  const res = await fetch('/api/bot/analysis/apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sug)
+  })
+  const result = await res.json()
+
+  if (!res.ok) {
+    alert('Erro: ' + result.error)
+    if (btn) { btn.disabled = false; btn.textContent = '✔ Aplicar' }
+    return
+  }
+
+  // Marca como aplicada
+  const card = document.getElementById(`suggestion-${idx}`)
+  if (card) {
+    card.style.opacity = '.5'
+    card.style.borderLeftColor = '#25d366'
+    if (btn) { btn.textContent = '✅ Aplicado'; btn.disabled = true }
+  }
+
+  // Recarrega decisões se foi ADD_KEYWORDS ou NEW_DECISION
+  if (sug.type === 'ADD_KEYWORDS' || sug.type === 'NEW_DECISION') {
+    loadBotDecisions()
+  }
+}
+
+// ─── BOT DECISIONS ────────────────────────────────────────────
+
+let _allDecisions = []
+
+async function loadBotDecisions() {
+  const res = await fetch('/api/bot/decisions')
+  if (!res.ok) return
+  _allDecisions = await res.json()
+  const tbody = document.getElementById('bot-decisions-tbody')
+  if (!_allDecisions.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:#888;padding:12px 8px">Nenhuma regra cadastrada.</td></tr>'
+    return
+  }
+  const stageColors = { QUALQUER:'badge-blue', WEBHOOK:'badge-blue', INFO2:'badge-blue',
+    COMPLEMENTO:'badge-purple', AGENDAMENTO:'badge-green', HUMANO:'badge-gray', NEG:'badge-gray' }
+  tbody.innerHTML = _allDecisions.map(d => {
+    const sc = stageColors[d.stage] || 'badge-blue'
+    const rowStyle = d.active ? '' : 'opacity:.45'
+    const kw  = (d.keywords||'').length > 45 ? d.keywords.slice(0,43)+'…' : (d.keywords||'—')
+    const ids = (d.msg_ids||'').length > 35 ? d.msg_ids.slice(0,33)+'…' : (d.msg_ids||'—')
+    return `<tr style="border-bottom:1px solid #f0f0f0;${rowStyle}">
+      <td style="padding:6px 8px;text-align:center">${d.priority}</td>
+      <td style="padding:6px 8px"><span class="badge ${sc}">${d.stage}</span></td>
+      <td style="padding:6px 8px;font-weight:600;font-size:.79rem">${d.intent}</td>
+      <td style="padding:6px 8px;color:#555;font-size:.78rem;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(d.keywords||'').replace(/"/g,'&quot;')}">${kw}</td>
+      <td style="padding:6px 8px;color:#555;font-size:.78rem" title="${(d.msg_ids||'').replace(/"/g,'&quot;')}">${ids}</td>
+      <td style="padding:6px 8px;text-align:center">
+        <div style="display:flex;gap:3px;justify-content:center">
+          <button class="btn btn-blue btn-sm" onclick="openDecisionModal(${d.id})" title="Editar">✏</button>
+          <button class="btn ${d.active?'btn-yellow':'btn-green'} btn-sm" onclick="toggleDecision(${d.id})" title="${d.active?'Desativar':'Ativar'}">${d.active?'⏸':'▶'}</button>
+          <button class="btn btn-red btn-sm" onclick="deleteDecision(${d.id})" title="Excluir">🗑</button>
+        </div>
+      </td>
+    </tr>`
+  }).join('')
+}
+
+function openDecisionModal(id) {
+  const d = id ? _allDecisions.find(x => x.id === id) : null
+  document.getElementById('decision-modal-title').textContent = d ? 'Editar Regra' : 'Nova Regra'
+  document.getElementById('dec-id').value          = d?.id || ''
+  document.getElementById('dec-priority').value    = d?.priority ?? 10
+  document.getElementById('dec-stage').value       = d?.stage || ''
+  document.getElementById('dec-intent').value      = d?.intent || ''
+  document.getElementById('dec-keywords').value    = d?.keywords || ''
+  document.getElementById('dec-msg-ids').value     = d?.msg_ids || ''
+  document.getElementById('dec-next-stage').value  = d?.next_stage || 'MESMO'
+  document.getElementById('dec-advances').checked  = !!(d?.advances)
+  document.getElementById('dec-finalizes').checked = !!(d?.finalizes)
+  document.getElementById('dec-human').checked     = !!(d?.human)
+  document.getElementById('decision-modal').classList.add('open')
+}
+
+async function saveDecision() {
+  const id = document.getElementById('dec-id').value
+  const body = {
+    priority:   Number(document.getElementById('dec-priority').value),
+    stage:      document.getElementById('dec-stage').value.trim().toUpperCase(),
+    intent:     document.getElementById('dec-intent').value.trim().toUpperCase(),
+    keywords:   document.getElementById('dec-keywords').value.trim(),
+    msg_ids:    document.getElementById('dec-msg-ids').value.trim(),
+    next_stage: document.getElementById('dec-next-stage').value.trim().toUpperCase() || 'MESMO',
+    advances:   document.getElementById('dec-advances').checked ? 1 : 0,
+    finalizes:  document.getElementById('dec-finalizes').checked ? 1 : 0,
+    human:      document.getElementById('dec-human').checked ? 1 : 0,
+    active:     1
+  }
+  if (!body.stage || !body.intent) { alert('Estágio e Intenção são obrigatórios'); return }
+  const url    = id ? `/api/bot/decisions/${id}` : '/api/bot/decisions'
+  const method = id ? 'PUT' : 'POST'
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  if (!res.ok) { alert('Erro ao salvar: ' + (await res.json()).error); return }
+  closeModal('decision-modal')
+  loadBotDecisions()
+}
+
+async function toggleDecision(id) {
+  await fetch(`/api/bot/decisions/${id}/toggle`, { method: 'POST' })
+  loadBotDecisions()
+}
+
+async function deleteDecision(id) {
+  if (!confirm('Excluir esta regra?')) return
+  await fetch(`/api/bot/decisions/${id}`, { method: 'DELETE' })
+  loadBotDecisions()
+}
+
+// ─── BOT MESSAGES ─────────────────────────────────────────────
+
+let _allBotMessages = []
+
+async function loadBotMessages() {
+  const res = await fetch('/api/bot/messages')
+  if (!res.ok) return
+  _allBotMessages = await res.json()
+  const tbody = document.getElementById('bot-messages-tbody')
+  if (!_allBotMessages.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#888;padding:12px 8px">Nenhuma mensagem cadastrada.</td></tr>'
+    return
+  }
+  tbody.innerHTML = _allBotMessages.map(m => {
+    const preview = (m.text||'').length > 80 ? m.text.slice(0,77)+'…' : (m.text||'—')
+    const dest = m.internal ? '<span class="badge badge-purple">Interno</span>' : '<span class="badge badge-green">Lead</span>'
+    return `<tr style="border-bottom:1px solid #f0f0f0">
+      <td style="padding:6px 8px"><code style="font-size:.78rem">${m.msg_id}</code></td>
+      <td style="padding:6px 8px"><span class="badge badge-gray">${m.type||'text'}</span></td>
+      <td style="padding:6px 8px;color:#333;font-size:.8rem" title="${(m.text||'').replace(/"/g,'&quot;')}">${preview.replace(/\n/g,' ↵ ')}</td>
+      <td style="padding:6px 8px">${dest}</td>
+      <td style="padding:6px 8px">
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-blue btn-sm" onclick="openMessageModal('${m.msg_id}')" title="Editar">✏</button>
+          <button class="btn btn-red btn-sm" onclick="deleteMessage('${m.msg_id}')" title="Excluir">🗑</button>
+        </div>
+      </td>
+    </tr>`
+  }).join('')
+}
+
+function openMessageModal(msgId) {
+  const m = msgId ? _allBotMessages.find(x => x.msg_id === msgId) : null
+  document.getElementById('message-modal-title').textContent = m ? 'Editar Frase' : 'Nova Frase'
+  document.getElementById('msg-original-id').value = m?.msg_id || ''
+  document.getElementById('msg-id').value          = m?.msg_id || ''
+  document.getElementById('msg-id').readOnly       = !!m  // não muda ID ao editar
+  document.getElementById('msg-type').value        = m?.type || 'text'
+  document.getElementById('msg-text').value        = m?.text || ''
+  document.getElementById('msg-url').value         = m?.url || ''
+  document.getElementById('msg-internal').checked  = !!(m?.internal)
+  document.getElementById('message-modal').classList.add('open')
+}
+
+async function saveMessage() {
+  const originalId = document.getElementById('msg-original-id').value
+  const body = {
+    msg_id:   document.getElementById('msg-id').value.trim().toUpperCase(),
+    type:     document.getElementById('msg-type').value,
+    text:     document.getElementById('msg-text').value.trim(),
+    url:      document.getElementById('msg-url').value.trim(),
+    internal: document.getElementById('msg-internal').checked ? 1 : 0
+  }
+  if (!body.msg_id || !body.text) { alert('ID e Texto são obrigatórios'); return }
+
+  let res
+  if (originalId) {
+    res = await fetch(`/api/bot/messages/${originalId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    })
+  } else {
+    res = await fetch('/api/bot/messages', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    })
+  }
+  if (!res.ok) { alert('Erro ao salvar: ' + (await res.json()).error); return }
+  closeModal('message-modal')
+  loadBotMessages()
+}
+
+async function deleteMessage(msgId) {
+  if (!confirm(`Excluir a mensagem "${msgId}"?`)) return
+  await fetch(`/api/bot/messages/${encodeURIComponent(msgId)}`, { method: 'DELETE' })
+  loadBotMessages()
+}
+</script>
+</body>
+</html>
