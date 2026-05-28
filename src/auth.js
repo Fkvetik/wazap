@@ -38,12 +38,13 @@ function registerAuthRoutes(app) {
     req.session.userId   = user.id
     req.session.username = user.username
     req.session.name     = user.name
+    req.session.company  = user.company || ''
     req.session.role     = user.role
 
     // Atualiza último acesso
     db.prepare(`UPDATE users SET last_login = datetime('now') WHERE id = ?`).run(user.id)
 
-    res.json({ ok: true, name: user.name, role: user.role })
+    res.json({ ok: true, name: user.name, company: user.company || '', role: user.role })
   })
 
   // Logout
@@ -58,6 +59,7 @@ function registerAuthRoutes(app) {
       id:       req.session.userId,
       username: req.session.username,
       name:     req.session.name,
+      company:  req.session.company || '',
       role:     req.session.role
     })
   })
@@ -67,14 +69,14 @@ function registerAuthRoutes(app) {
   // Lista usuários
   app.get('/api/users', requireAdmin, (req, res) => {
     const rows = getDB().prepare(
-      `SELECT id, username, name, role, active, last_login, created_at FROM users ORDER BY id`
+      `SELECT id, username, name, company, role, active, last_login, created_at FROM users ORDER BY id`
     ).all()
     res.json(rows)
   })
 
   // Cria usuário
   app.post('/api/users', requireAdmin, async (req, res) => {
-    const { username, password, name, role = 'operator' } = req.body
+    const { username, password, name, company = '', role = 'operator' } = req.body
     if (!username || !password || !name)
       return res.status(400).json({ error: 'username, password e name são obrigatórios' })
 
@@ -82,8 +84,8 @@ function registerAuthRoutes(app) {
     try {
       const db = getDB()
       const r  = db.prepare(
-        `INSERT INTO users (username, password_hash, name, role) VALUES (?, ?, ?, ?)`
-      ).run(username.trim(), hash, name.trim(), role)
+        `INSERT INTO users (username, password_hash, name, company, role) VALUES (?, ?, ?, ?, ?)`
+      ).run(username.trim(), hash, name.trim(), company.trim(), role)
       const newId = Number(r.lastInsertRowid)
       // Semeia funil padrão para o novo usuário
       seedBotDataForUser(db, newId)
@@ -95,17 +97,29 @@ function registerAuthRoutes(app) {
 
   // Atualiza usuário
   app.put('/api/users/:id', requireAdmin, async (req, res) => {
-    const { name, role, active, password } = req.body
+    const { name, company = '', role, active, password } = req.body
     const db = getDB()
 
     if (password) {
       const hash = await bcrypt.hash(password, 10)
-      db.prepare(`UPDATE users SET name=?, role=?, active=?, password_hash=? WHERE id=?`)
-        .run(name, role, active, hash, req.params.id)
+      db.prepare(`UPDATE users SET name=?, company=?, role=?, active=?, password_hash=? WHERE id=?`)
+        .run(name, company, role, active, hash, req.params.id)
     } else {
-      db.prepare(`UPDATE users SET name=?, role=?, active=? WHERE id=?`)
-        .run(name, role, active, req.params.id)
+      db.prepare(`UPDATE users SET name=?, company=?, role=?, active=? WHERE id=?`)
+        .run(name, company, role, active, req.params.id)
     }
+    res.json({ ok: true })
+  })
+
+  // Atualiza perfil (o próprio usuário)
+  app.put('/api/profile', async (req, res) => {
+    const { name, company } = req.body
+    if (!name) return res.status(400).json({ error: 'Nome obrigatório' })
+    const db = getDB()
+    db.prepare(`UPDATE users SET name=?, company=? WHERE id=?`)
+      .run(name.trim(), (company || '').trim(), req.session.userId)
+    req.session.name    = name.trim()
+    req.session.company = (company || '').trim()
     res.json({ ok: true })
   })
 

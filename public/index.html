@@ -162,9 +162,12 @@
     <small>Disparador WhatsApp multi-instância</small>
   </div>
   <div style="display:flex;align-items:center;gap:10px;font-size:.82rem">
-    <span style="opacity:.7">Operador:</span>
-    <span id="header-operador" style="font-weight:600">—</span>
+    <div style="text-align:right">
+      <div><span style="opacity:.7">Operador:</span> <span id="header-operador" style="font-weight:600">—</span></div>
+      <div id="header-company" style="opacity:.6;font-size:.72rem"></div>
+    </div>
     <span id="header-user" style="opacity:.7;font-size:.75rem"></span>
+    <button class="btn btn-gray btn-sm" onclick="openProfileModal()">👤 Perfil</button>
     <button class="btn btn-gray btn-sm" onclick="openSettings()">⚙ Config</button>
     <button class="btn btn-red btn-sm" onclick="logout()">Sair</button>
   </div>
@@ -173,6 +176,7 @@
 <nav>
   <button class="active" onclick="showPage('instances')">📱 Instâncias</button>
   <button onclick="showPage('campaigns')">📣 Campanhas</button>
+  <button onclick="showPage('warmup')">🔥 Aquecimento</button>
   <button onclick="showPage('templates')">💬 Templates</button>
   <button onclick="showPage('logs')">📋 Logs</button>
   <button onclick="showPage('kanban')">🗂 CRM</button>
@@ -208,6 +212,7 @@
 <div class="page" id="page-campaigns">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
     <strong>Campanhas</strong>
+    <button class="btn btn-blue btn-sm" onclick="openCsvAnalyzeModal()">🔍 Analisar CSV</button>
     <button class="btn btn-green" onclick="openCampaignModal()">+ Nova campanha</button>
   </div>
   <div id="campaigns-list"></div>
@@ -308,6 +313,160 @@
     </div>
     <button class="btn btn-dark btn-sm" style="margin-top:10px" onclick="changePassword()">Salvar nova senha</button>
     <p id="cp-result" class="hint" style="margin-top:6px"></p>
+  </div>
+</div>
+
+<!-- ═══ AQUECIMENTO ═══ -->
+<div class="page" id="page-warmup">
+
+  <!-- Stats rápidas -->
+  <div class="grid-3" style="margin-bottom:16px">
+    <div class="stat-box card" style="padding:16px">
+      <div class="num" id="wu-stat-warming" style="color:var(--yellow)">0</div>
+      <div class="lbl">🔥 Aquecendo</div>
+    </div>
+    <div class="stat-box card" style="padding:16px">
+      <div class="num" id="wu-stat-ready" style="color:var(--green)">0</div>
+      <div class="lbl">✅ Prontos</div>
+    </div>
+    <div class="stat-box card" style="padding:16px">
+      <div class="num" id="wu-stat-msgs" style="color:var(--blue)">0</div>
+      <div class="lbl">📨 Msgs hoje</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+
+    <!-- Painel de chips -->
+    <div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h2>📱 Chips em Aquecimento</h2>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-yellow btn-sm" onclick="openWarmupAddModal(false)">+ Aquecer chip</button>
+            <button class="btn btn-green btn-sm" onclick="openWarmupAddModal(true)">+ Chip pronto</button>
+          </div>
+        </div>
+        <div id="warmup-instances-list">
+          <p style="color:#aaa;font-size:.85rem">Carregando...</p>
+        </div>
+      </div>
+
+      <!-- Plano de aquecimento -->
+      <div class="card">
+        <h2>📅 Plano de Aquecimento</h2>
+        <table>
+          <thead><tr>
+            <th>A partir do dia</th>
+            <th>Msgs/dia</th>
+            <th>Chance de mídia</th>
+          </tr></thead>
+          <tbody id="warmup-plan-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Biblioteca de mídias -->
+    <div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h2>🖼️ Mídias RHImob</h2>
+          <button class="btn btn-blue btn-sm" onclick="openWarmupMediaModal()">+ Adicionar mídia</button>
+        </div>
+        <p style="font-size:.78rem;color:#888;margin-bottom:12px">
+          Imagens, PDFs e vídeos enviados durante o funil de aquecimento para apresentar a RHImob.
+        </p>
+        <div id="warmup-media-list"></div>
+      </div>
+
+      <!-- Log recente -->
+      <div class="card">
+        <h2>📋 Log de Aquecimento</h2>
+        <div id="warmup-log-list" style="max-height:300px;overflow-y:auto;font-size:.8rem"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal: Adicionar chip ao aquecimento -->
+<div class="modal-bg" id="modalWarmupAdd">
+  <div class="modal" style="max-width:480px">
+    <h3 id="warmup-add-title">🔥 Adicionar chip ao aquecimento</h3>
+    <div>
+      <label>ID do chip (identificador único)</label>
+      <input id="wu-id" placeholder="ex: chip1, numero_vendas">
+      <label>Instância Evolution API</label>
+      <input id="wu-evo" placeholder="Nome da instância no Evolution API">
+      <label>Número do WhatsApp (com DDI, ex: 5511999887766)</label>
+      <input id="wu-phone" placeholder="5511999887766">
+      <label>
+        <input type="checkbox" id="wu-master" style="width:auto;margin-right:6px">
+        Número master (já aquecido, usado como âncora de conversa)
+      </label>
+      <input type="hidden" id="wu-skip" value="0">
+      <label>Observações</label>
+      <input id="wu-notes" placeholder="opcional">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('modalWarmupAdd')">Cancelar</button>
+      <button class="btn btn-green" id="wu-add-btn" onclick="addWarmupInstance()">Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Upload de mídia -->
+<div class="modal-bg" id="modalWarmupMedia">
+  <div class="modal" style="max-width:480px">
+    <h3>🖼️ Adicionar mídia ao roteiro RHImob</h3>
+    <label>Arquivo (imagem, PDF ou vídeo)</label>
+    <input type="file" id="wu-media-file" accept=".jpg,.jpeg,.png,.gif,.pdf,.mp4">
+    <label>Legenda / mensagem que acompanha</label>
+    <textarea id="wu-media-caption" rows="3" placeholder="Ex: Conheça a RHImob! Conectamos corretores às melhores oportunidades 🏠"></textarea>
+    <label>Enviar a partir do dia de aquecimento</label>
+    <select id="wu-media-day">
+      <option value="1">Dia 1 em diante</option>
+      <option value="3" selected>Dia 3 em diante</option>
+      <option value="5">Dia 5 em diante</option>
+      <option value="7">Dia 7 em diante</option>
+      <option value="14">Dia 14 em diante</option>
+    </select>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('modalWarmupMedia')">Cancelar</button>
+      <button class="btn btn-blue" onclick="uploadWarmupMedia()">Enviar mídia</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Perfil do usuário -->
+<div class="modal-bg" id="modalProfile">
+  <div class="modal" style="max-width:440px">
+    <h3>👤 Meu Perfil</h3>
+    <label>Nome completo</label>
+    <input id="profile-name" placeholder="Seu nome">
+    <label>Empresa / Imobiliária</label>
+    <input id="profile-company" placeholder="Ex: RHImob | Kaza Negócios Imobiliários">
+    <p style="font-size:.78rem;color:#888;margin-top:8px">
+      Estes dados são usados em <code>{operador}</code> e <code>{empresa}</code> nas mensagens automáticas.
+    </p>
+    <hr class="sep">
+    <h3 style="font-size:.95rem">🔑 Trocar senha</h3>
+    <div class="grid-2">
+      <div>
+        <label>Senha atual</label>
+        <input type="password" id="profile-cp-current" placeholder="••••••••">
+      </div>
+      <div>
+        <label>Nova senha</label>
+        <input type="password" id="profile-cp-new" placeholder="••••••••">
+      </div>
+    </div>
+    <p id="profile-pw-result" class="hint"></p>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('modalProfile')">Fechar</button>
+      <button class="btn btn-yellow btn-sm" onclick="saveProfilePassword()">Salvar senha</button>
+      <button class="btn btn-green" onclick="saveProfile()">💾 Salvar perfil</button>
+    </div>
   </div>
 </div>
 
@@ -898,6 +1057,11 @@
       </div>
     </div>
 
+    <div style="margin-top:4px">
+      <label>Empresa / Imobiliária <small style="color:#aaa">(usado em {empresa} nas mensagens)</small></label>
+      <input id="user-company" placeholder="Ex: Kaza Negócios Imobiliários">
+    </div>
+
     <div class="grid-2">
       <div>
         <label>Senha <span id="user-pass-hint" class="hint">(deixe em branco para não alterar)</span></label>
@@ -964,6 +1128,7 @@ function showPage(name, noEvent) {
   if (name === 'campaigns')  loadCampaigns()
   if (name === 'templates')  loadTemplates()
   if (name === 'logs')       loadLogs()
+  if (name === 'warmup')     loadWarmup()
 }
 
 // ─── Settings ────────────────────────────────
@@ -1488,7 +1653,9 @@ async function initSession() {
     const res = await fetch('/auth/me')
     if (!res.ok) { window.location.href = '/login.html'; return }
     currentUser = await res.json()
-    document.getElementById('header-user').textContent = `(${currentUser.name})`
+    document.getElementById('header-operador').textContent = currentUser.name || '—'
+    document.getElementById('header-user').textContent = `(${currentUser.username || ''})`
+    if (currentUser.company) document.getElementById('header-company').textContent = `🏢 ${currentUser.company}`
     if (currentUser.role === 'admin') {
       document.getElementById('nav-users').style.display = 'block'
       document.getElementById('nav-admin').style.display = 'block'
@@ -1537,6 +1704,7 @@ function openUserModal(user = null) {
   document.getElementById('user-modal-title').textContent = user ? 'Editar Usuário' : 'Novo Usuário'
   document.getElementById('user-id').value       = user?.id || ''
   document.getElementById('user-name').value     = user?.name || ''
+  document.getElementById('user-company').value  = user?.company || ''
   document.getElementById('user-username').value = user?.username || ''
   document.getElementById('user-password').value = ''
   document.getElementById('user-role').value     = user?.role || 'operator'
@@ -1578,6 +1746,7 @@ function togglePassVis(inputId, eyeId) {
 async function saveUser() {
   const body = {
     name:     document.getElementById('user-name').value.trim(),
+    company:  document.getElementById('user-company').value.trim(),
     username: document.getElementById('user-username').value.trim(),
     password: document.getElementById('user-password').value,
     role:     document.getElementById('user-role').value,
@@ -2434,6 +2603,362 @@ async function deleteMessage(msgId) {
   await fetch(`/api/bot/messages/${encodeURIComponent(msgId)}`, { method: 'DELETE' })
   loadBotMessages()
 }
+
+// ══════════════════════════════════════════════════════════════
+// ─── PERFIL ──────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+function openProfileModal() {
+  document.getElementById('profile-name').value    = currentUser?.name    || ''
+  document.getElementById('profile-company').value = currentUser?.company || ''
+  document.getElementById('profile-cp-current').value = ''
+  document.getElementById('profile-cp-new').value     = ''
+  document.getElementById('profile-pw-result').textContent = ''
+  document.getElementById('modalProfile').classList.add('open')
+}
+
+async function saveProfile() {
+  const name    = document.getElementById('profile-name').value.trim()
+  const company = document.getElementById('profile-company').value.trim()
+  if (!name) return alert('Nome é obrigatório')
+  const res = await fetch('/api/profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, company })
+  })
+  if (res.ok) {
+    currentUser.name    = name
+    currentUser.company = company
+    document.getElementById('header-operador').textContent = name
+    document.getElementById('header-company').textContent  = company ? `🏢 ${company}` : ''
+    closeModal('modalProfile')
+    alert('✅ Perfil atualizado!')
+  }
+}
+
+async function saveProfilePassword() {
+  const current = document.getElementById('profile-cp-current').value
+  const newPass = document.getElementById('profile-cp-new').value
+  const el = document.getElementById('profile-pw-result')
+  if (!current || !newPass) { el.textContent = '⚠️ Preencha ambos os campos'; return }
+  const res = await fetch('/api/users/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current, newPassword: newPass })
+  })
+  const data = await res.json()
+  el.textContent = res.ok ? '✅ Senha alterada com sucesso!' : `❌ ${data.error}`
+}
+
+// ══════════════════════════════════════════════════════════════
+// ─── CSV INTELIGENTE ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+// Modal de análise CSV inserido inline (criado via JS para simplicidade)
+function openCsvAnalyzeModal() {
+  const existing = document.getElementById('modalCsvAnalyze')
+  if (existing) { existing.classList.add('open'); return }
+
+  const modal = document.createElement('div')
+  modal.id = 'modalCsvAnalyze'
+  modal.className = 'modal-bg open'
+  modal.innerHTML = `
+    <div class="modal" style="max-width:640px">
+      <h3>🔍 Analisar CSV Inteligente</h3>
+      <p style="font-size:.82rem;color:#666;margin-bottom:14px">
+        Faça upload do seu CSV para detectar automaticamente as colunas, separador e placeholders disponíveis.
+      </p>
+      <input type="file" id="csv-analyze-file" accept=".csv,.txt,.tsv" style="margin-bottom:12px">
+      <button class="btn btn-blue" onclick="analyzeCSV()">🔍 Analisar</button>
+      <div id="csv-analyze-result" style="margin-top:16px"></div>
+      <div class="modal-footer">
+        <button class="btn btn-gray" onclick="document.getElementById('modalCsvAnalyze').classList.remove('open')">Fechar</button>
+      </div>
+    </div>
+  `
+  document.body.appendChild(modal)
+}
+
+async function analyzeCSV() {
+  const file = document.getElementById('csv-analyze-file')?.files[0]
+  if (!file) return alert('Selecione um arquivo CSV')
+
+  const fd = new FormData()
+  fd.append('csv', file)
+
+  const el = document.getElementById('csv-analyze-result')
+  el.innerHTML = '<p style="color:#888">🔄 Analisando...</p>'
+
+  const res = await fetch('/api/csv/analyze', { method: 'POST', body: fd })
+  const data = await res.json()
+
+  if (!res.ok) { el.innerHTML = `<p style="color:red">❌ ${data.error}</p>`; return }
+
+  const mapHTML = Object.entries(data.mapping).map(([k,v]) =>
+    v ? `<tr><td><code>{${k}}</code></td><td style="color:#27ae60">✅ ${v}</td></tr>`
+      : `<tr><td><code>{${k}}</code></td><td style="color:#e74c3c">⚠️ não encontrada</td></tr>`
+  ).join('')
+
+  const phHTML = data.placeholders.map(p =>
+    `<span style="background:${p.essential?'#d4edda':'#e8f4fd'};border-radius:4px;padding:2px 8px;margin:2px;display:inline-block;font-size:.8rem">
+      <code>${p.ph}</code> ← ${p.col}
+    </span>`
+  ).join('')
+
+  const sampleHTML = data.sample?.length ? `
+    <div style="overflow-x:auto;margin-top:10px">
+      <table style="font-size:.75rem">
+        <thead><tr>${Object.keys(data.sample[0]).map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+        <tbody>${data.sample.map(r=>`<tr>${Object.values(r).map(v=>`<td>${v||''}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
+    </div>` : ''
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="stat-box" style="background:#f0faf5;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:1.5rem;font-weight:700;color:var(--green)">${data.total.toLocaleString()}</div>
+        <div style="font-size:.78rem;color:#666">Total de linhas</div>
+      </div>
+      <div class="stat-box" style="background:#f0faf5;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:1.5rem;font-weight:700;color:var(--green-dark)">${data.valid_phones.toLocaleString()}</div>
+        <div style="font-size:.78rem;color:#666">Telefones válidos</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:10px">
+      <strong style="font-size:.85rem">📊 Detalhes:</strong>
+      <span class="badge badge-blue" style="margin-left:8px">Formato: ${data.format}</span>
+      <span class="badge badge-gray" style="margin-left:4px">Separador: ${data.separator}</span>
+      <span class="badge badge-gray" style="margin-left:4px">${data.headers.length} colunas</span>
+    </div>
+
+    <div style="margin-bottom:12px">
+      <strong style="font-size:.85rem">🔗 Mapeamento de colunas essenciais:</strong>
+      <table style="margin-top:6px;font-size:.82rem"><tbody>${mapHTML}</tbody></table>
+    </div>
+
+    <div style="margin-bottom:12px">
+      <strong style="font-size:.85rem">✨ Placeholders disponíveis para frases:</strong>
+      <div style="margin-top:6px">${phHTML}</div>
+    </div>
+
+    <div style="background:#fffde7;border-radius:8px;padding:10px;font-size:.82rem;margin-bottom:12px">
+      <strong>💡 Exemplo de frase com estes dados:</strong><br>
+      <em style="color:#555">
+        Olá ${data.mapping.name ? `{primeiro_nome}` : '[nome não encontrado]'}!
+        Sou da RHImob${currentUser?.company ? ` — ${currentUser.company}` : ''}.
+        ${data.mapping.city ? 'Vi que você é de {cidade}' : ''}
+        ${data.mapping.creci ? 'com CRECI {creci}' : ''} e
+        gostaríamos de conversar sobre oportunidades. 🏠
+      </em>
+    </div>
+
+    <strong style="font-size:.85rem">👀 Amostra (3 linhas):</strong>${sampleHTML}
+  `
+}
+
+// ══════════════════════════════════════════════════════════════
+// ─── AQUECIMENTO ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+
+let warmupInstances = []
+let warmupMedia     = []
+
+async function loadWarmup() {
+  await Promise.all([loadWarmupInstances(), loadWarmupMedia(), loadWarmupLog(), loadWarmupPlan()])
+}
+
+async function loadWarmupInstances() {
+  const res = await fetch('/api/warmup/instances')
+  warmupInstances = await res.json()
+  renderWarmupInstances()
+  updateWarmupStats()
+}
+
+function updateWarmupStats() {
+  document.getElementById('wu-stat-warming').textContent = warmupInstances.filter(i=>i.status==='warming').length
+  document.getElementById('wu-stat-ready').textContent   = warmupInstances.filter(i=>i.status==='ready').length
+}
+
+function renderWarmupInstances() {
+  const el = document.getElementById('warmup-instances-list')
+  if (!warmupInstances.length) {
+    el.innerHTML = `<p style="color:#aaa;font-size:.85rem;text-align:center;padding:20px">
+      Nenhum chip adicionado ainda.<br>
+      <small>Clique em "Aquecer chip" ou "Chip pronto" para começar.</small>
+    </p>`
+    return
+  }
+
+  el.innerHTML = warmupInstances.map(inst => {
+    const pct      = Math.min(100, Math.round((inst.warmup_day / 21) * 100))
+    const statusBadge = {
+      warming: '<span class="badge badge-yellow">🔥 Aquecendo</span>',
+      ready:   '<span class="badge badge-green">✅ Pronto</span>',
+      paused:  '<span class="badge badge-gray">⏸ Pausado</span>',
+    }[inst.status] || ''
+
+    return `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;background:white">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <strong>${inst.id}</strong>
+          ${inst.is_master ? '<span class="badge badge-purple" style="margin-left:6px">⭐ Master</span>' : ''}
+          ${statusBadge}
+          <div style="font-size:.75rem;color:#888;margin-top:3px">
+            Evolution: <code>${inst.evo_instance}</code>
+            ${inst.phone ? ` · 📱 ${inst.phone}` : ''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px">
+          ${inst.status === 'warming' ? `<button class="btn btn-green btn-sm" onclick="markWarmupReady('${inst.id}')">✅ Pronto</button>` : ''}
+          <button class="btn btn-red btn-sm" onclick="removeWarmupInstance('${inst.id}')">✕</button>
+        </div>
+      </div>
+      ${inst.status === 'warming' ? `
+        <div style="margin-bottom:4px;font-size:.78rem;color:#666">Dia ${inst.warmup_day} de 21 (${pct}%)</div>
+        <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;background:var(--yellow)"></div></div>
+      ` : ''}
+      ${inst.notes ? `<div style="font-size:.76rem;color:#888;margin-top:6px">📝 ${inst.notes}</div>` : ''}
+    </div>`
+  }).join('')
+}
+
+function openWarmupAddModal(skipWarmup = false) {
+  document.getElementById('wu-id').value    = ''
+  document.getElementById('wu-evo').value   = ''
+  document.getElementById('wu-phone').value = ''
+  document.getElementById('wu-notes').value = ''
+  document.getElementById('wu-master').checked = false
+  document.getElementById('wu-skip').value  = skipWarmup ? '1' : '0'
+  const title = skipWarmup
+    ? '✅ Adicionar chip já pronto (pula aquecimento)'
+    : '🔥 Adicionar chip ao aquecimento'
+  document.getElementById('warmup-add-title').textContent = title
+  document.getElementById('wu-add-btn').textContent = skipWarmup ? 'Adicionar como pronto' : 'Iniciar aquecimento'
+  document.getElementById('modalWarmupAdd').classList.add('open')
+}
+
+async function addWarmupInstance() {
+  const id          = document.getElementById('wu-id').value.trim()
+  const evo_instance= document.getElementById('wu-evo').value.trim()
+  const phone       = document.getElementById('wu-phone').value.trim()
+  const notes       = document.getElementById('wu-notes').value.trim()
+  const is_master   = document.getElementById('wu-master').checked
+  const skip_warmup = document.getElementById('wu-skip').value === '1'
+
+  if (!id || !evo_instance) return alert('ID e instância Evolution são obrigatórios')
+
+  const res = await fetch('/api/warmup/instances', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, evo_instance, phone, is_master, notes, skip_warmup })
+  })
+  const data = await res.json()
+  if (!res.ok) return alert('Erro: ' + data.error)
+  closeModal('modalWarmupAdd')
+  loadWarmupInstances()
+}
+
+async function markWarmupReady(id) {
+  const inst = warmupInstances.find(i => i.id === id)
+  if (!inst || !confirm(`Marcar "${id}" como pronto para uso?`)) return
+  await fetch(`/api/warmup/instances/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: inst.phone, status: 'ready', is_master: inst.is_master, notes: inst.notes })
+  })
+  loadWarmupInstances()
+}
+
+async function removeWarmupInstance(id) {
+  if (!confirm(`Remover "${id}" do aquecimento?`)) return
+  await fetch(`/api/warmup/instances/${id}`, { method: 'DELETE' })
+  loadWarmupInstances()
+}
+
+async function loadWarmupPlan() {
+  const res  = await fetch('/api/warmup/plan')
+  const plan = await res.json()
+  const tbody = document.getElementById('warmup-plan-tbody')
+  tbody.innerHTML = plan.map(p => `
+    <tr>
+      <td>Dia ${p.day}+</td>
+      <td><strong>${p.msgs}</strong></td>
+      <td>${Math.round(p.media_chance * 100)}%</td>
+    </tr>`).join('')
+}
+
+async function loadWarmupMedia() {
+  const res = await fetch('/api/warmup/media')
+  warmupMedia = await res.json()
+  const el = document.getElementById('warmup-media-list')
+  if (!warmupMedia.length) {
+    el.innerHTML = '<p style="color:#aaa;font-size:.82rem">Nenhuma mídia adicionada.</p>'
+    return
+  }
+  const typeIcon = { image:'🖼️', video:'🎥', document:'📄' }
+  el.innerHTML = warmupMedia.map(m => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:1.4rem">${typeIcon[m.media_type]||'📎'}</span>
+      <div style="flex:1">
+        <div style="font-size:.85rem;font-weight:600">${m.original_name}</div>
+        <div style="font-size:.75rem;color:#888">
+          ${m.caption ? `"${m.caption.slice(0,60)}${m.caption.length>60?'...':''}"` : '<em>sem legenda</em>'}
+          · A partir do Dia ${m.send_on_day}
+        </div>
+      </div>
+      <span class="badge ${m.active ? 'badge-green' : 'badge-gray'}" style="font-size:.7rem">${m.active?'Ativo':'Inativo'}</span>
+      <button class="btn btn-red btn-sm" onclick="deleteWarmupMedia(${m.id})">✕</button>
+    </div>`).join('')
+}
+
+function openWarmupMediaModal() {
+  document.getElementById('wu-media-file').value    = ''
+  document.getElementById('wu-media-caption').value = ''
+  document.getElementById('wu-media-day').value     = '3'
+  document.getElementById('modalWarmupMedia').classList.add('open')
+}
+
+async function uploadWarmupMedia() {
+  const file    = document.getElementById('wu-media-file').files[0]
+  const caption = document.getElementById('wu-media-caption').value
+  const day     = document.getElementById('wu-media-day').value
+  if (!file) return alert('Selecione um arquivo')
+
+  const fd = new FormData()
+  fd.append('media', file)
+  fd.append('caption', caption)
+  fd.append('send_on_day', day)
+
+  const res = await fetch('/api/warmup/media', { method: 'POST', body: fd })
+  const data = await res.json()
+  if (!res.ok) return alert('Erro: ' + data.error)
+  closeModal('modalWarmupMedia')
+  loadWarmupMedia()
+}
+
+async function deleteWarmupMedia(id) {
+  if (!confirm('Remover esta mídia?')) return
+  await fetch(`/api/warmup/media/${id}`, { method: 'DELETE' })
+  loadWarmupMedia()
+}
+
+async function loadWarmupLog() {
+  const res  = await fetch('/api/warmup/log')
+  const rows = await res.json()
+  const el   = document.getElementById('warmup-log-list')
+  if (!rows.length) { el.innerHTML = '<p style="color:#aaa">Nenhuma atividade ainda.</p>'; return }
+  el.innerHTML = rows.slice(0, 50).map(r => `
+    <div style="padding:4px 0;border-bottom:1px solid #f0f0f0">
+      <span style="color:#999">${r.created_at?.slice(11,16)||''}</span>
+      <span style="color:var(--green-dark);margin:0 6px">📤 ${r.from_instance}</span>
+      → <span style="color:var(--blue);margin:0 6px">${r.to_instance}</span>
+      <span style="color:#555">${r.message?.slice(0,60)||''}</span>
+    </div>`).join('')
+}
+
+// (header já atualizado dentro de initSession)
 </script>
 </body>
 </html>

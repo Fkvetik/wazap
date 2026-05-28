@@ -673,6 +673,252 @@ app.get('/api/admin/campaigns', (req, res) => {
   res.json(rows)
 })
 
+// ─── CSV INTELIGENTE — ANÁLISE ─────────────────────────────────
+
+// Rota que analisa o CSV sem importar — retorna mapeamento + placeholders
+app.post('/api/csv/analyze', async (req, res) => {
+  if (!req.files?.csv) return res.status(400).json({ error: 'Arquivo CSV não enviado' })
+
+  const tmpPath = path.join(__dirname, '..', 'uploads', `analyze_${Date.now()}.csv`)
+  await req.files.csv.mv(tmpPath)
+
+  try {
+    const content = fs.readFileSync(tmpPath, 'utf-8')
+    fs.unlinkSync(tmpPath)
+
+    // Detecta separador: tab > ponto-vírgula > vírgula
+    const firstLine = content.split('\n')[0]
+    const tabs = firstLine.split('\t').length
+    const semicolons = firstLine.split(';').length
+    const commas = firstLine.split(',').length
+    let sep = ','
+    if (tabs > commas && tabs > semicolons) sep = '\t'
+    else if (semicolons > commas) sep = ';'
+
+    const { parse } = require('csv-parse/sync')
+    const records = parse(content, {
+      columns: true, skip_empty_lines: true, trim: true,
+      delimiter: sep, relax_column_count: true
+    })
+
+    if (!records.length) return res.status(400).json({ error: 'CSV vazio ou inválido' })
+
+    const headers = Object.keys(records[0])
+    const sample  = records.slice(0, 3) // mostra 3 linhas de exemplo
+
+    // Mapeamento inteligente de colunas
+    const PHONE_KEYS  = ['telefone','phone','whatsapp','numero','number','celular','tel','fone','rhi_ig_telefone_wa']
+    const NAME_KEYS   = ['nome','name','nomecompleto','nomeCompleto','primeironome','primeiro_nome','contato']
+    const CITY_KEYS   = ['cidade','city','municipio','regiao','regiocidade','regiaocidade']
+    const CRECI_KEYS  = ['creci','registro','crecisp']
+    const EMAIL_KEYS  = ['email','e-mail','email1']
+    const COMPANY_KEYS= ['empresa','company','imobiliaria','imobiliária','corretor_empresa']
+
+    const hLow = headers.map(h => h.toLowerCase())
+
+    function findCol(keys) {
+      const idx = hLow.findIndex(h => keys.some(k => h.includes(k)))
+      return idx >= 0 ? headers[idx] : null
+    }
+
+    const phoneCol   = findCol(PHONE_KEYS)
+    const nameCol    = findCol(NAME_KEYS)
+    const cityCol    = findCol(CITY_KEYS)
+    const creciCol   = findCol(CRECI_KEYS)
+    const emailCol   = findCol(EMAIL_KEYS)
+    const companyCol = findCol(COMPANY_KEYS)
+
+    // Colunas extras viram placeholders automáticos
+    const essential = [phoneCol, nameCol, cityCol, creciCol, emailCol, companyCol].filter(Boolean)
+    const extras    = headers.filter(h => !essential.includes(h))
+
+    const placeholders = []
+    if (nameCol)    placeholders.push({ ph: '{primeiro_nome}', col: nameCol, essential: true })
+    if (cityCol)    placeholders.push({ ph: '{cidade}', col: cityCol, essential: false })
+    if (creciCol)   placeholders.push({ ph: '{creci}', col: creciCol, essential: false })
+    if (emailCol)   placeholders.push({ ph: '{email}', col: emailCol, essential: false })
+    if (companyCol) placeholders.push({ ph: '{empresa_contato}', col: companyCol, essential: false })
+    for (const h of extras) {
+      placeholders.push({ ph: `{${h.toLowerCase().replace(/\s+/g,'_')}}`, col: h, essential: false })
+    }
+
+    // Detecta formato automaticamente
+    const { detectFormat: df } = (() => {
+      // inline mini-detector
+      function detectFormat(h) {
+        const hl = h.map(x => x.toLowerCase())
+        if (hl.includes('curriculo') || hl.includes('primeironome')) return 'talentos'
+        if (hl.includes('celular') && hl.includes('situacao') && hl.includes('creci')) return 'corretor_meta'
+        if (hl.includes('creci') || hl.includes('rhi_ig_status')) return 'creci'
+        return 'generic'
+      }
+      return { detectFormat }
+    })()
+
+    const format = df(headers)
+
+    // Conta telefones válidos na amostra
+    let validPhones = 0
+    if (phoneCol) {
+      validPhones = records.filter(r => {
+        const v = String(r[phoneCol] || '').replace(/\D/g,'')
+        return v.length >= 10
+      }).length
+    }
+
+    res.json({
+      ok: true,
+      total: records.length,
+      valid_phones: validPhones,
+      separator: sep === '\t' ? 'tab' : sep,
+      format,
+      headers,
+      mapping: { phone: phoneCol, name: nameCol, city: cityCol, creci: creciCol, email: emailCol, company: companyCol },
+      placeholders,
+      sample: sample.map(r => {
+        const out = {}
+        headers.slice(0,8).forEach(h => { out[h] = r[h] })
+        return out
+      })
+    })
+  } catch (err) {
+    try { fs.unlinkSync(tmpPath) } catch (_) {}
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// ─── AQUECIMENTO — ROTAS ───────────────────────────────────────
+
+const { runWarmupCycle, getInstanceStatus, WARMUP_PLAN } = require('./warmup')
+const uploadsWarmup = path.join(__dirname, '..', 'uploads', 'warmup')
+if (!fs.existsSync(uploadsWarmup)) fs.mkdirSync(uploadsWarmup, { recursive: true })
+
+// Lista instâncias de aquecimento
+app.get('/api/warmup/instances', (req, res) => {
+  const rows = getDB().prepare(`
+    SELECT * FROM warmup_instances WHERE user_id = ? ORDER BY created_at DESC
+  `).all(req.uid)
+  res.json(rows)
+})
+
+// Adiciona instância ao aquecimento
+app.post('/api/warmup/instances', async (req, res) => {
+  const { id, evo_instance, phone, is_master = 0, notes = '', skip_warmup = 0 } = req.body
+  if (!id || !evo_instance) return res.status(400).json({ error: 'id e evo_instance são obrigatórios' })
+
+  const status = skip_warmup ? 'ready' : 'warming'
+  const warmup_day = skip_warmup ? 21 : 1
+
+  try {
+    getDB().prepare(`
+      INSERT INTO warmup_instances (id, user_id, evo_instance, phone, status, warmup_day, warmup_start, is_master, notes)
+      VALUES (?, ?, ?, ?, ?, ?, date('now'), ?, ?)
+    `).run(id, req.uid, evo_instance, phone || '', status, warmup_day, is_master ? 1 : 0, notes)
+    res.json({ ok: true })
+  } catch (e) {
+    res.status(400).json({ error: 'ID já existe' })
+  }
+})
+
+// Atualiza instância (phone, status, etc)
+app.put('/api/warmup/instances/:id', (req, res) => {
+  const { phone, status, is_master, notes } = req.body
+  getDB().prepare(`
+    UPDATE warmup_instances SET phone=?, status=?, is_master=?, notes=?
+    WHERE id=? AND user_id=?
+  `).run(phone||'', status||'warming', is_master?1:0, notes||'', req.params.id, req.uid)
+  res.json({ ok: true })
+})
+
+// Remove instância
+app.delete('/api/warmup/instances/:id', (req, res) => {
+  getDB().prepare(`DELETE FROM warmup_instances WHERE id=? AND user_id=?`).run(req.params.id, req.uid)
+  res.json({ ok: true })
+})
+
+// Status de conexão da instância Evolution
+app.get('/api/warmup/instances/:id/status', async (req, res) => {
+  const inst = getDB().prepare(`SELECT * FROM warmup_instances WHERE id=? AND user_id=?`)
+    .get(req.params.id, req.uid)
+  if (!inst) return res.status(404).json({ error: 'Instância não encontrada' })
+  const state = await getInstanceStatus(inst.evo_instance)
+  res.json({ id: inst.id, evo_instance: inst.evo_instance, state })
+})
+
+// Disparo manual do ciclo de aquecimento
+app.post('/api/warmup/run', async (req, res) => {
+  if (req.session?.role !== 'admin') return res.status(403).json({ error: 'Acesso restrito' })
+  try {
+    await runWarmupCycle()
+    res.json({ ok: true, message: 'Ciclo de aquecimento executado' })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Retorna o plano de aquecimento
+app.get('/api/warmup/plan', (req, res) => {
+  res.json(WARMUP_PLAN)
+})
+
+// Log de aquecimento
+app.get('/api/warmup/log', (req, res) => {
+  const rows = getDB().prepare(`
+    SELECT * FROM warmup_log ORDER BY created_at DESC LIMIT 200
+  `).all()
+  res.json(rows)
+})
+
+// ─── AQUECIMENTO — MÍDIAS ─────────────────────────────────────
+
+app.get('/api/warmup/media', (req, res) => {
+  const rows = getDB().prepare(`
+    SELECT * FROM warmup_media WHERE user_id = ? ORDER BY send_on_day, id
+  `).all(req.uid)
+  res.json(rows)
+})
+
+app.post('/api/warmup/media', async (req, res) => {
+  if (!req.files?.media) return res.status(400).json({ error: 'Arquivo não enviado' })
+  const { caption = '', send_on_day = 3 } = req.body
+  const file = req.files.media
+  const ext  = path.extname(file.name).toLowerCase()
+  const allowed = ['.jpg','.jpeg','.png','.gif','.mp4','.pdf','.doc','.docx']
+  if (!allowed.includes(ext)) return res.status(400).json({ error: 'Tipo não suportado' })
+
+  const typeMap = { '.jpg':'image','.jpeg':'image','.png':'image','.gif':'image','.mp4':'video','.pdf':'document','.doc':'document','.docx':'document' }
+  const media_type = typeMap[ext] || 'document'
+  const filename   = `warmup_${Date.now()}${ext}`
+  const savePath   = path.join(uploadsWarmup, filename)
+
+  await file.mv(savePath)
+  const r = getDB().prepare(`
+    INSERT INTO warmup_media (user_id, filename, original_name, media_type, caption, send_on_day)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(req.uid, filename, file.name, media_type, caption, Number(send_on_day))
+
+  res.json({ ok: true, id: r.lastInsertRowid, filename, media_type })
+})
+
+app.put('/api/warmup/media/:id', (req, res) => {
+  const { caption, send_on_day, active } = req.body
+  getDB().prepare(`UPDATE warmup_media SET caption=?, send_on_day=?, active=? WHERE id=? AND user_id=?`)
+    .run(caption||'', Number(send_on_day)||3, active?1:0, req.params.id, req.uid)
+  res.json({ ok: true })
+})
+
+app.delete('/api/warmup/media/:id', (req, res) => {
+  const m = getDB().prepare(`SELECT filename FROM warmup_media WHERE id=? AND user_id=?`).get(req.params.id, req.uid)
+  if (m) {
+    try { fs.unlinkSync(path.join(uploadsWarmup, m.filename)) } catch(_) {}
+    getDB().prepare(`DELETE FROM warmup_media WHERE id=?`).run(req.params.id)
+  }
+  res.json({ ok: true })
+})
+
+// Serve arquivos de warmup publicamente (para Evolution API acessar)
+app.use('/uploads/warmup', express.static(uploadsWarmup))
+
 // ─── HELPERS ───────────────────────────────────────────────────
 
 function insertContacts(campaignId, contacts) {

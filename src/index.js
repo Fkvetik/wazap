@@ -34,6 +34,10 @@ async function main() {
   const { startSenderLoop } = require('./sender')
   startSenderLoop()
   console.log('✅ Motor de disparo iniciado')
+
+  // Inicia agendador de aquecimento de chips
+  const { startWarmupScheduler } = require('./warmup')
+  startWarmupScheduler()
 }
 
 main().catch(err => {

@@ -193,11 +193,50 @@ async function initDB() {
       username      TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       name          TEXT NOT NULL,
+      company       TEXT DEFAULT '',
       role          TEXT DEFAULT 'operator',
       active        INTEGER DEFAULT 1,
       last_login    TEXT,
       created_at    TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS warmup_instances (
+      id            TEXT PRIMARY KEY,
+      user_id       INTEGER DEFAULT 1,
+      evo_instance  TEXT NOT NULL,
+      phone         TEXT DEFAULT '',
+      status        TEXT DEFAULT 'warming',
+      warmup_day    INTEGER DEFAULT 1,
+      warmup_start  TEXT DEFAULT (date('now')),
+      is_master     INTEGER DEFAULT 0,
+      notes         TEXT DEFAULT '',
+      created_at    TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS warmup_media (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id       INTEGER DEFAULT 1,
+      filename      TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      media_type    TEXT DEFAULT 'image',
+      caption       TEXT DEFAULT '',
+      send_on_day   INTEGER DEFAULT 3,
+      active        INTEGER DEFAULT 1,
+      created_at    TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS warmup_log (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_instance TEXT NOT NULL,
+      to_instance   TEXT NOT NULL,
+      message       TEXT DEFAULT '',
+      media_id      INTEGER DEFAULT 0,
+      status        TEXT DEFAULT 'sent',
+      created_at    TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_warmup_log_ts ON warmup_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_warmup_inst_user ON warmup_instances(user_id);
 
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
@@ -304,6 +343,9 @@ async function initDB() {
     INSERT OR IGNORE INTO settings (key, value) VALUES ('bot_site_vagas_url',   'https://www.rhimob.com.br/vagas');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('bot_site_empresa_url', 'https://www.rhimob.com.br');
   `)
+
+  // Migrations para bancos existentes
+  try { wrapper._db.run(`ALTER TABLE users ADD COLUMN company TEXT DEFAULT ''`) } catch(_) {}
 
   // Cria usuário admin padrão se não existir
   await seedAdmin(wrapper)
